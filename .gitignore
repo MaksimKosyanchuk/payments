@@ -1,1 +1,48 @@
+# Assignment & local planning (not for submission remote)
 ЗАВДАННЯ.md
+HANDOFF.md
+
+# Graphify knowledge graph
+graphify-out/
+graphify/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Build / compile output
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Logs & caches
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.eslintcache
+.turbo/
+.cache/
+
+# Test / tooling
+.nyc_output/
+junit.xml
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+.cursor/

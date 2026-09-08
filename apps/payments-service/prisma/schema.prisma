@@ -1,0 +1,139 @@
+// payments-service — saga orchestrator (no balances; calls ledger over HTTP)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransferStatus {
+  Pending
+  FraudChecked
+  Held
+  Credited
+  Completed
+  Compensating
+  Failed
+}
+
+enum SagaStepStatus {
+  started
+  succeeded
+  failed
+  compensated
+  skipped
+}
+
+enum SplitBillStatus {
+  Pending
+  PartiallyPaid
+  Settled
+  Cancelled
+}
+
+enum SplitShareStatus {
+  Pending
+  Confirmed
+  Paid
+  Overdue
+  Cancelled
+}
+
+/// One transfer = one saga. Idempotency-Key → unique row.
+model Transfer {
+  id             String         @id @default(uuid()) @db.Uuid
+  idempotencyKey String         @unique
+  fromWalletId   String         @db.Uuid
+  toWalletId     String?        @db.Uuid
+  toIdentifier   String?
+  amount         Decimal        @db.Decimal(18, 2)
+  currency       String         @db.VarChar(3)
+  fxRate         Decimal?       @db.Decimal(18, 8)
+  status         TransferStatus @default(Pending)
+  currentStep    String?
+  holdId         String?        @db.Uuid
+  failureReason  String?
+  attempts       Int            @default(0)
+  nextRetryAt    DateTime?
+  correlationId  String?
+  initiatorId    String?        @db.Uuid
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  steps  SagaStep[]
+  shares SplitShare[]
+
+  @@index([status, nextRetryAt])
+  @@index([fromWalletId])
+  @@index([toWalletId])
+  @@index([correlationId])
+  @@map("transfers")
+}
+
+model SagaStep {
+  id        String         @id @default(uuid()) @db.Uuid
+  sagaId    String         @db.Uuid
+  step      String
+  status    SagaStepStatus
+  request   Json?
+  response  Json?
+  error     String?
+  at        DateTime       @default(now())
+
+  transfer Transfer @relation(fields: [sagaId], references: [id], onDelete: Cascade)
+
+  @@index([sagaId, at])
+  @@map("saga_steps")
+}
+
+model SplitBill {
+  id          String          @id @default(uuid()) @db.Uuid
+  initiatorId String          @db.Uuid
+  total       Decimal         @db.Decimal(18, 2)
+  currency    String          @db.VarChar(3)
+  status      SplitBillStatus @default(Pending)
+  title       String?
+  dueAt       DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  shares SplitShare[]
+
+  @@index([initiatorId])
+  @@index([status, dueAt])
+  @@map("split_bills")
+}
+
+model SplitShare {
+  id         String           @id @default(uuid()) @db.Uuid
+  billId     String           @db.Uuid
+  payerId    String           @db.Uuid
+  amount     Decimal          @db.Decimal(18, 2)
+  status     SplitShareStatus @default(Pending)
+  transferId String?          @db.Uuid
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  bill     SplitBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  transfer Transfer? @relation(fields: [transferId], references: [id], onDelete: SetNull)
+
+  @@unique([billId, payerId])
+  @@index([payerId, status])
+  @@index([transferId])
+  @@map("split_shares")
+}
+
+model OutboxMessage {
+  id            String    @id @default(uuid()) @db.Uuid
+  eventId       String    @unique @db.Uuid
+  type          String
+  payload       Json
+  correlationId String?
+  createdAt     DateTime  @default(now())
+  publishedAt   DateTime?
+
+  @@index([publishedAt, createdAt])
+  @@map("outbox_messages")
+}

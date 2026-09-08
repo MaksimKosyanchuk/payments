@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+coverage
+.next
+.turbo
+.git
+graphify-out
+*.lock
+package-lock.json
+HANDOFF.md
+ЗАВДАННЯ.md
+*.prisma

@@ -3,21 +3,21 @@ import { Wallet } from '../../wallets/entities/wallet.entity';
 
 @Entity('users')
 export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+	@PrimaryGeneratedColumn('uuid')
+	id: string;
 
-  @Column({ unique: true })
-  email: string;
+	@Column({ unique: true })
+	email: string;
 
-  @Column()
-  passwordHash: string;
+	@Column()
+	passwordHash: string;
 
-  @Column({ nullable: true })
-  refreshTokenHash: string | null;
+	@Column({ nullable: true })
+	refreshTokenHash: string | null;
 
-  @Column({ default: 'user' })
-  role: 'user' | 'admin';
+	@Column({ default: 'user' })
+	role: 'user' | 'admin';
 
-  @OneToMany(() => Wallet, (wallet) => wallet.owner)
-  wallets: Wallet[];
+	@OneToMany(() => Wallet, (wallet) => wallet.owner)
+	wallets: Wallet[];
 }

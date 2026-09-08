@@ -4,16 +4,16 @@ import { IsNumber, IsPositive, IsString, IsUUID } from 'class-validator';
 // (див. ТЗ, розділ про переказ і Idempotency-Key) — воно тут навмисно
 // не заведене.
 export class CreateTransferDto {
-  @IsUUID()
-  fromWalletId: string;
+	@IsUUID()
+	fromWalletId: string;
 
-  @IsString()
-  toWalletIdentifier: string; // email або username отримувача
+	@IsString()
+	toWalletIdentifier: string; // email або username отримувача
 
-  @IsNumber()
-  @IsPositive()
-  amount: number;
+	@IsNumber()
+	@IsPositive()
+	amount: number;
 
-  @IsString()
-  currency: string;
+	@IsString()
+	currency: string;
 }

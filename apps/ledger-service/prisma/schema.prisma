@@ -1,0 +1,151 @@
+// ledger-service — source of truth for money (event store + CQRS projections)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum JournalSide {
+  debit
+  credit
+}
+
+enum HoldStatus {
+  open
+  captured
+  released
+  expired
+}
+
+model User {
+  id               String   @id @default(uuid()) @db.Uuid
+  email            String   @unique
+  passwordHash     String
+  refreshTokenHash String?
+  role             UserRole @default(user)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  wallets Wallet[]
+}
+
+/// Account identity only — balance lives in WalletBalance (projection).
+model Wallet {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @db.Uuid
+  currency  String   @default("USD") @db.VarChar(3)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner   User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  balance WalletBalance?
+  holds   Hold[]
+
+  @@index([ownerId])
+  @@index([ownerId, currency])
+  @@map("wallets")
+}
+
+/// Append-only event store. Unique (streamId, version) prevents lost updates / double-spend.
+model LedgerEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  streamId      String
+  version       Int
+  type          String
+  payload       Json
+  occurredAt    DateTime @default(now())
+  correlationId String?
+  causationId   String?
+  schemaVersion Int      @default(1)
+
+  @@unique([streamId, version])
+  @@index([streamId])
+  @@index([type, occurredAt])
+  @@index([correlationId])
+  @@map("ledger_events")
+}
+
+/// CQRS read model: available + held = total. Never write money here without an event.
+model WalletBalance {
+  walletId     String  @id @db.Uuid
+  available    Decimal @default(0) @db.Decimal(18, 2)
+  held         Decimal @default(0) @db.Decimal(18, 2)
+  currency     String  @db.VarChar(3)
+  asOfVersion  Int     @default(0)
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("wallet_balances")
+}
+
+/// Double-entry journal lines. Per transactionId: sum(debit) = sum(credit).
+model JournalEntry {
+  id            String      @id @default(uuid()) @db.Uuid
+  transactionId String      @db.Uuid
+  accountId     String
+  side          JournalSide
+  amount        Decimal     @db.Decimal(18, 2)
+  currency      String      @db.VarChar(3)
+  createdAt     DateTime    @default(now())
+  correlationId String?
+
+  @@index([transactionId])
+  @@index([accountId])
+  @@index([correlationId])
+  @@map("journal_entries")
+}
+
+model Hold {
+  id        String     @id @default(uuid()) @db.Uuid
+  walletId  String     @db.Uuid
+  amount    Decimal    @db.Decimal(18, 2)
+  currency  String     @db.VarChar(3)
+  status    HoldStatus @default(open)
+  sagaId    String?
+  expiresAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, status])
+  @@index([sagaId])
+  @@index([expiresAt])
+  @@map("holds")
+}
+
+model IdempotencyKey {
+  id           String   @id @default(uuid()) @db.Uuid
+  key          String
+  scope        String
+  resourceId   String?
+  responseHash String?
+  responseBody Json?
+  createdAt    DateTime @default(now())
+
+  @@unique([scope, key])
+  @@index([createdAt])
+  @@map("idempotency_keys")
+}
+
+/// Transactional outbox — publish to Redis Streams after commit.
+model OutboxMessage {
+  id            String    @id @default(uuid()) @db.Uuid
+  eventId       String    @unique @db.Uuid
+  type          String
+  payload       Json
+  correlationId String?
+  createdAt     DateTime  @default(now())
+  publishedAt   DateTime?
+
+  @@index([publishedAt, createdAt])
+  @@map("outbox_messages")
+}
