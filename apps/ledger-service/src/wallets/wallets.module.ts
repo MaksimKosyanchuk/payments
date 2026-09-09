@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthModule } from '../auth/auth.module';
 import { User } from '../auth/entities/user.entity';
 import { WalletsService } from './wallets.service';
 import { WalletsController } from './wallets.controller';
@@ -11,6 +12,7 @@ import { JournalEntry } from './entities/journal-entry.entity';
 
 @Module({
 	imports: [
+		AuthModule,
 		TypeOrmModule.forFeature([
 			Wallet,
 			Hold,

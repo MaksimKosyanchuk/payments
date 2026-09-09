@@ -23,6 +23,10 @@ export interface TransferSagaContext {
 	/** Locked FX rate amountTo/amount; 1 for same currency. */
 	fxRate: number;
 	initiatorId?: string;
+	/** Set after lockFx — destination wallet. */
+	toWalletId?: string | null;
+	/** Ledger owner of destination wallet (for recipient WS / activity). */
+	recipientOwnerId?: string | null;
 }
 
 /** What compensation step must succeed before we may mark Failed. */

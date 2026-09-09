@@ -24,7 +24,15 @@ export type TransferEventPayload = {
 	fxRate?: number;
 	holdId?: string | null;
 	failureReason?: string | null;
-	/** Optional — when payments includes initiator for activity feed. */
 	initiatorId?: string;
+	recipientOwnerId?: string | null;
 	userId?: string;
 };
+
+/** Events that should refresh payment history UIs. */
+export const HISTORY_TRANSFER_TYPES = new Set([
+	'TransferCaptured',
+	'TransferCredited',
+	'TransferCompleted',
+	'TransferFailed',
+]);

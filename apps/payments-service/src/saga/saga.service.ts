@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { FxService } from '../fx/fx.service';
 import { LedgerClient, LedgerHttpError } from '../ledger/ledger.client';
 import { OutboxService } from '../outbox/outbox.service';
+import { QueueService } from '../queue/queue.service';
 import { TRANSFER_OUTBOX_EVENT } from '../transfers/transfer.events';
 import { TransferStore } from '../transfers/transfer.store';
 import {
@@ -29,6 +30,7 @@ export class SagaService {
 		private readonly ledger: LedgerClient,
 		private readonly fx: FxService,
 		private readonly outbox: OutboxService,
+		private readonly queue: QueueService,
 	) {}
 
 	async executeTransfer(ctx: TransferSagaContext): Promise<void> {
@@ -181,6 +183,7 @@ export class SagaService {
 			amountTo: row.amountTo,
 			fxRate: row.fxRate,
 			initiatorId: row.initiatorId ?? undefined,
+			toWalletId: row.toWalletId,
 		};
 	}
 
@@ -212,6 +215,8 @@ export class SagaService {
 				amountTo,
 				toCurrency,
 				currency: quote.from,
+				toWalletId: dest.walletId,
+				recipientOwnerId: dest.ownerId,
 			};
 			await this.transfer.update({
 				where: { id: ctx.transferId },
@@ -223,6 +228,10 @@ export class SagaService {
 					toWalletId: dest.walletId,
 					currentStep: 'lockFx',
 				},
+			});
+			await this.queue.setTransferParties(ctx.transferId, {
+				initiatorId: next.initiatorId ?? ctx.initiatorId ?? null,
+				recipientOwnerId: dest.ownerId,
 			});
 			this.logger.log(
 				`FX locked transfer=${ctx.transferId} ${next.amount} ${next.currency} → ${next.amountTo} ${next.toCurrency} @ ${next.fxRate} destWallet=${dest.walletId ?? 'pending-create'}`,
@@ -292,6 +301,7 @@ export class SagaService {
 				);
 				return false;
 			}
+			console.log(wallet)
 			if (Number(wallet.available) < ctx.amount) {
 				this.logger.warn(
 					`Insufficient funds transfer=${ctx.transferId} available=${wallet.available} need=${ctx.amount}`,

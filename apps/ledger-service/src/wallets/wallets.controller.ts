@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ServiceAuth } from '../auth/decorators/service-auth.decorator';
 import { WalletsService } from './wallets.service';
+import { CreateWalletDto } from './dto/create-wallet.dto';
 import { DepositDto } from './dto/deposit.dto';
 import { WithdrawDto } from './dto/withdraw.dto';
 import { PlaceHoldDto } from './dto/place-hold.dto';
@@ -22,7 +24,14 @@ export class WalletsController {
 		return this.wallets.listForUser(req.user.userId);
 	}
 
-	/** Payments saga: resolve recipient wallet + currency (do not trust client toCurrency). */
+	@Post('wallets')
+	@UseGuards(JwtAuthGuard)
+	create(@Request() req: AuthenticatedRequest, @Body() dto: CreateWalletDto) {
+		return this.wallets.getOrCreateForUser(req.user.userId, dto.currency);
+	}
+
+	/** Static path before `wallets/:id` so "resolve" is not captured as id. */
+	@ServiceAuth()
 	@Get('wallets/resolve')
 	resolveDestination(
 		@Query('identifier') identifier: string,
@@ -31,16 +40,17 @@ export class WalletsController {
 		return this.wallets.resolveDestination(identifier, preferCurrency);
 	}
 
-	@Get('wallets/:id/events')
+	/** User: own wallet only (TZ §3.2 IDOR fix). */
+	@Get('wallets/:id')
 	@UseGuards(JwtAuthGuard)
-	listEvents(@Param('id') id: string) {
-		return this.wallets.listEvents(id);
+	getOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+		return this.wallets.getOwnedById(id, req.user.userId);
 	}
 
-	/** Readable by payments saga (no user JWT) — returns projection view. */
-	@Get('wallets/:id')
-	getOne(@Param('id') id: string) {
-		return this.wallets.getById(id);
+	@Get('wallets/:id/events')
+	@UseGuards(JwtAuthGuard)
+	listEvents(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+		return this.wallets.listEvents(id, req.user.userId);
 	}
 
 	@Post('wallets/:id/deposit')
@@ -55,7 +65,13 @@ export class WalletsController {
 		return this.wallets.withdraw(id, dto.amount);
 	}
 
-	/** Internal / saga: place hold on sender wallet */
+	@ServiceAuth()
+	@Get('internal/wallets/:id')
+	getOneInternal(@Param('id') id: string) {
+		return this.wallets.getById(id);
+	}
+
+	@ServiceAuth()
 	@Post('wallets/:id/holds')
 	placeHold(@Param('id') id: string, @Body() dto: PlaceHoldDto) {
 		return this.wallets.placeHold({
@@ -67,21 +83,25 @@ export class WalletsController {
 		});
 	}
 
+	@ServiceAuth()
 	@Post('holds/:id/capture')
 	captureHold(@Param('id') id: string, @Body() dto: HoldActionDto) {
 		return this.wallets.captureHold(id, dto.commandId);
 	}
 
+	@ServiceAuth()
 	@Post('holds/:id/release')
 	releaseHold(@Param('id') id: string, @Body() dto: HoldActionDto) {
 		return this.wallets.releaseHold(id, dto.commandId);
 	}
 
+	@ServiceAuth()
 	@Get('holds/:id')
 	getHold(@Param('id') id: string) {
 		return this.wallets.getHold(id);
 	}
 
+	@ServiceAuth()
 	@Post('wallets/credit')
 	credit(@Body() dto: CreditDto) {
 		return this.wallets.credit({
@@ -94,6 +114,7 @@ export class WalletsController {
 		});
 	}
 
+	@ServiceAuth()
 	@Post('wallets/:id/debit-compensation')
 	debitCompensation(@Param('id') id: string, @Body() dto: DebitCompensationDto) {
 		return this.wallets.debitForCompensation(id, dto.amount, dto.commandId);

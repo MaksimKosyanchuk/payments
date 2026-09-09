@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
+import { QueueService } from '../queue/queue.service';
 import { SagaService } from '../saga/saga.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { TransferStore } from './transfer.store';
@@ -14,6 +15,7 @@ export class TransfersService {
 	constructor(
 		private readonly transfer: TransferStore,
 		private readonly sagaService: SagaService,
+		private readonly queue: QueueService,
 	) {}
 
 	async create(
@@ -68,6 +70,12 @@ export class TransfersService {
 			throw err;
 		}
 
+		// Before saga + before client WS subscribe: sender known; recipient after lockFx.
+		await this.queue.setTransferParties(transfer.id, {
+			initiatorId: transfer.initiatorId,
+			recipientOwnerId: null,
+		});
+
 		const ctx = this.toSagaContext(transfer);
 		// Fire-and-forget so client can subscribe to WS progress before saga finishes.
 		void this.sagaService.executeTransfer(ctx).catch(() => undefined);
@@ -85,6 +93,13 @@ export class TransfersService {
 			throw new NotFoundException('Transfer not found');
 		}
 		return transfer;
+	}
+
+	async listForWallet(walletId: string): Promise<TransferRecord[]> {
+		if (!walletId?.trim()) {
+			throw new BadRequestException('walletId is required');
+		}
+		return this.transfer.listForWallet(walletId.trim(), 50);
 	}
 
 	private resolveIdempotencyKey(dto: CreateTransferDto, header?: string): string {
@@ -142,6 +157,7 @@ export class TransfersService {
 			amountTo: transfer.amountTo,
 			fxRate: transfer.fxRate,
 			initiatorId: transfer.initiatorId ?? undefined,
+			toWalletId: transfer.toWalletId,
 		};
 	}
 }

@@ -6,6 +6,7 @@ import { MemoryTransferStore } from '../transfers/transfer.memory-store';
 import { LedgerClient } from '../ledger/ledger.client';
 import { FxService } from '../fx/fx.service';
 import { OutboxService } from '../outbox/outbox.service';
+import { QueueService } from '../queue/queue.service';
 import { TransferRecord, TransferSagaContext } from '../transfers/transfer.types';
 import { TRANSFER_OUTBOX_EVENT } from '../transfers/transfer.events';
 
@@ -99,6 +100,10 @@ describe('SagaService (TZ one-hold + FX)', () => {
 				{ provide: TransferStore, useClass: MemoryTransferStore },
 				{ provide: LedgerClient, useValue: ledger },
 				{ provide: OutboxService, useValue: outbox },
+				{
+					provide: QueueService,
+					useValue: { setTransferParties: jest.fn().mockResolvedValue(undefined) },
+				},
 			],
 		}).compile();
 
@@ -179,6 +184,10 @@ describe('SagaService (TZ one-hold + FX)', () => {
 				{ provide: TransferStore, useClass: MemoryTransferStore },
 				{ provide: LedgerClient, useValue: ledger },
 				{ provide: OutboxService, useValue: outbox },
+				{
+					provide: QueueService,
+					useValue: { setTransferParties: jest.fn().mockResolvedValue(undefined) },
+				},
 			],
 		}).compile();
 		const staleService = module.get(SagaService);

@@ -1,4 +1,5 @@
 import { FxService } from './fx.service';
+import { MOCK_FX_RATES } from './fx.rates';
 
 describe('FxService', () => {
 	const fx = new FxService({ get: () => '60000' } as never);
@@ -18,9 +19,16 @@ describe('FxService', () => {
 	});
 
 	it('marks quote stale after TTL', () => {
-		fx.setRates({ USD: 1, EUR: 0.92, UAH: 41 }, new Date(Date.now() - 120_000));
 		const shortTtl = new FxService({ get: () => '1000' } as never);
-		shortTtl.setRates({ USD: 1, EUR: 0.92, UAH: 41 }, new Date(Date.now() - 5000));
+		shortTtl.setRates({ ...MOCK_FX_RATES }, new Date(Date.now() - 5000));
 		expect(shortTtl.quote('USD', 'EUR').stale).toBe(true);
+	});
+
+	it('fresh setRates clears stale', () => {
+		const shortTtl = new FxService({ get: () => '1000' } as never);
+		shortTtl.setRates({ ...MOCK_FX_RATES }, new Date(Date.now() - 5000));
+		expect(shortTtl.quote('USD', 'EUR').stale).toBe(true);
+		shortTtl.setRates({ ...MOCK_FX_RATES }, new Date());
+		expect(shortTtl.quote('USD', 'EUR').stale).toBe(false);
 	});
 });

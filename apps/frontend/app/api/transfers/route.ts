@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { paymentsFetch } from '@/lib/api';
 import { getSessionUser } from '@/lib/auth';
 
+export async function GET(req: NextRequest) {
+	const user = await getSessionUser();
+	if (!user) {
+		return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+	}
+	const walletId = req.nextUrl.searchParams.get('walletId');
+	if (!walletId) {
+		return NextResponse.json({ error: 'walletId is required' }, { status: 400 });
+	}
+	try {
+		const list = await paymentsFetch(`/transfers?walletId=${encodeURIComponent(walletId)}`);
+		return NextResponse.json(list);
+	} catch (err) {
+		return NextResponse.json({ error: (err as Error).message }, { status: 502 });
+	}
+}
+
 export async function POST(req: NextRequest) {
 	const user = await getSessionUser();
 	if (!user) {

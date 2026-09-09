@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { MOCK_FX_RATES } from './fx.rates';
 
 export type FxCurrency = 'USD' | 'EUR' | 'UAH';
 
@@ -12,29 +13,29 @@ export interface FxQuote {
 }
 
 /**
- * Simple cached FX for TZ: a few currencies, TTL, no full fx-service.
- * Rates are vs USD mid; pair rate = usd[to] / usd[from] inverted appropriately.
+ * Cached FX table. Refreshed by FxRefreshWorker via HTTP mock every ~10s.
+ * Rates are units of currency per 1 USD.
  */
 @Injectable()
 export class FxService {
 	private readonly logger = new Logger(FxService.name);
 	private readonly ttlMs: number;
-	/** Units of currency per 1 USD. */
-	private readonly perUsd: Record<FxCurrency, number> = {
-		USD: 1,
-		EUR: 0.92,
-		UAH: 41.0,
-	};
+	private readonly perUsd: Record<FxCurrency, number> = { ...MOCK_FX_RATES };
 	private asOf = new Date();
 
 	constructor(config: ConfigService) {
-		this.ttlMs = Number(config.get('FX_RATE_TTL_MS') ?? 5 * 60_000);
+		// Default TTL 60s — refresh is every 10s, so a missed poll still ok.
+		this.ttlMs = Number(config.get('FX_RATE_TTL_MS') ?? 60_000);
 	}
 
-	/** Refresh table (tests / admin). */
+	/** Apply rates from mock / provider. */
 	setRates(rates: Partial<Record<FxCurrency, number>>, asOf = new Date()): void {
 		Object.assign(this.perUsd, rates);
 		this.asOf = asOf;
+	}
+
+	getSnapshot(): { asOf: Date; rates: Record<FxCurrency, number>; ttlMs: number } {
+		return { asOf: this.asOf, rates: { ...this.perUsd }, ttlMs: this.ttlMs };
 	}
 
 	quote(fromRaw: string, toRaw: string): FxQuote {
@@ -46,7 +47,6 @@ export class FxService {
 		if (from === to) {
 			return { from, to, rate: 1, asOf: this.asOf, stale: false };
 		}
-		// from → USD → to
 		const rate = this.roundRate(this.perUsd[to] / this.perUsd[from]);
 		const age = Date.now() - this.asOf.getTime();
 		const stale = age > this.ttlMs;

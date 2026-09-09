@@ -79,6 +79,15 @@ export class WalletsService {
 		return this.toView(wallet, await this.computeBalance(walletId));
 	}
 
+	/** User-facing: same as getById but hides existence of others' wallets. */
+	async getOwnedById(walletId: string, userId: string): Promise<WalletView> {
+		const wallet = await this.wallets.findOne({ where: { id: walletId } });
+		if (!wallet || wallet.ownerId !== userId) {
+			throw new NotFoundException('Гаманець не знайдено');
+		}
+		return this.toView(wallet, await this.computeBalance(walletId));
+	}
+
 	async deposit(walletId: string, amount: number): Promise<WalletView> {
 		this.assertPositive(amount);
 		return this.dataSource.transaction(async (em) => {
@@ -419,8 +428,8 @@ export class WalletsService {
 		});
 	}
 
-	async listEvents(walletId: string): Promise<LedgerEvent[]> {
-		await this.getById(walletId);
+	async listEvents(walletId: string, userId: string): Promise<LedgerEvent[]> {
+		await this.getOwnedById(walletId, userId);
 		return this.events.find({
 			where: { streamId: walletStreamId(walletId) },
 			order: { version: 'ASC' },

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { TransfersService } from './transfers.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 
@@ -9,6 +9,12 @@ export class TransfersController {
 	@Post()
 	create(@Body() dto: CreateTransferDto, @Headers('idempotency-key') idempotencyKey?: string) {
 		return this.transfers.create(dto, idempotencyKey);
+	}
+
+	/** History for a wallet: sent (from) + received (to). */
+	@Get()
+	list(@Query('walletId') walletId: string) {
+		return this.transfers.listForWallet(walletId);
 	}
 
 	@Get(':id')

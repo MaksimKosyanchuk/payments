@@ -39,4 +39,21 @@ docker-compose up --build
 cd apps/ledger-service && npm test
 ```
 
-Не всі тести в репозиторії однаково надійні — це навмисно, дивись ТЗ.
+## Знайдені закладні баги (ТЗ §3.2)
+
+### 1. IDOR — читання чужого гаманця
+- **Проблема:** `GET /wallets/:id` віддавав проєкцію будь-якого гаманця без перевірки
+  власника (спочатку навіть без JWT).
+- **Відтворення:** знати UUID чужого гаманця → `GET /wallets/:id` (або без токена на
+  стартерній версії) → видно баланс/дані не свого гаманця.
+- **Фікс:** user API — `JwtAuthGuard` + `getOwnedById` (чужий id → 404); для payments
+  saga — `@ServiceAuth()` / `x-service-key` і `GET /internal/wallets/:id`.
+
+### 2. Хибно-зелений тест withdraw
+- **Проблема:** у стартері `apps/ledger-service/test/wallets.service.spec.ts` тест
+  «does not allow withdrawing more than the current balance» викликав
+  `service.withdraw(...).catch(...)` **без `await`**. Jest завершував тест до
+  перевірки reject — тест міг бути зеленим навіть якщо withdraw не кидав помилку.
+- **Відтворення:** прибрати `throw` з withdraw при недостатньому балансі → тест у
+  стартерній формі все одно pass.
+- **Фікс:** `await expect(service.withdraw(...)).rejects.toBeInstanceOf(BadRequestException)`.

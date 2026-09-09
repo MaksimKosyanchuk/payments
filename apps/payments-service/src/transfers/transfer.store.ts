@@ -102,4 +102,16 @@ export class TransferStore {
 		});
 		return rows.map(toTransferRecord);
 	}
+
+	/** Sent or received for a wallet (history feed). */
+	async listForWallet(walletId: string, take = 50): Promise<TransferRecord[]> {
+		const rows = await this.prisma.transfer.findMany({
+			where: {
+				OR: [{ fromWalletId: walletId }, { toWalletId: walletId }],
+			},
+			orderBy: { createdAt: 'desc' },
+			take,
+		});
+		return rows.map(toTransferRecord);
+	}
 }

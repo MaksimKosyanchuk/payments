@@ -52,4 +52,11 @@ export class MemoryTransferStore {
 				(t.nextRetryAt == null || t.nextRetryAt <= now),
 		);
 	}
+
+	async listForWallet(walletId: string, take = 50): Promise<TransferRecord[]> {
+		return [...this.byId.values()]
+			.filter((t) => t.fromWalletId === walletId || t.toWalletId === walletId)
+			.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+			.slice(0, take);
+	}
 }

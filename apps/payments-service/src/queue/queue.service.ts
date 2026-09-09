@@ -3,6 +3,15 @@ import { ConfigService } from '@nestjs/config';
 import { OutboxMessage } from '@prisma/client';
 import Redis from 'ioredis';
 
+/** Shared with notifications-service — ACL for WS transfer rooms. */
+export const TRANSFER_PARTIES_KEY_PREFIX = 'transfer:parties:';
+const TRANSFER_PARTIES_TTL_SEC = 60 * 60 * 24 * 7; // 7d
+
+export type TransferParties = {
+	initiatorId: string | null;
+	recipientOwnerId: string | null;
+};
+
 @Injectable()
 export class QueueService implements OnModuleDestroy {
 	private readonly logger = new Logger(QueueService.name);
@@ -36,15 +45,41 @@ export class QueueService implements OnModuleDestroy {
 		}
 	}
 
-	async publishOutbox(message: OutboxMessage): Promise<string> {
+	private async ensureConnected(): Promise<Redis> {
 		if (!this.redis) {
 			throw new Error('Redis not configured');
 		}
 		if (this.redis.status !== 'ready') {
 			await this.redis.connect();
 		}
+		return this.redis;
+	}
 
-		const id = await this.redis.xadd(
+	/**
+	 * Cache sender/recipient for a transfer so notifications can ACL `subscribe`.
+	 * Recipient may be null until lockFx resolves destination.
+	 */
+	async setTransferParties(
+		transferId: string,
+		parties: TransferParties,
+	): Promise<void> {
+		if (!this.redis) {
+			this.logger.warn(`skip setTransferParties ${transferId}: Redis disabled`);
+			return;
+		}
+		const redis = await this.ensureConnected();
+		const key = `${TRANSFER_PARTIES_KEY_PREFIX}${transferId}`;
+		await redis.hset(key, {
+			initiatorId: parties.initiatorId ?? '',
+			recipientOwnerId: parties.recipientOwnerId ?? '',
+		});
+		await redis.expire(key, TRANSFER_PARTIES_TTL_SEC);
+	}
+
+	async publishOutbox(message: OutboxMessage): Promise<string> {
+		const redis = await this.ensureConnected();
+
+		const id = await redis.xadd(
 			this.stream,
 			'*',
 			'eventId',

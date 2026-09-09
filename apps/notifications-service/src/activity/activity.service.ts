@@ -41,26 +41,36 @@ export class ActivityService {
 	}
 
 	/**
-	 * Persist activity when we know the user. Transfer payloads may omit userId —
-	 * then only WS push happens (room by transferId).
+	 * Persist activity for initiator and recipient (unique eventId per user).
 	 */
 	async recordTransferActivity(event: DomainEvent): Promise<void> {
 		const payload = event.payload as TransferEventPayload;
-		const userId = payload.initiatorId ?? payload.userId;
-		if (!userId) {
+		const userIds = new Set<string>();
+		if (payload.initiatorId) userIds.add(payload.initiatorId);
+		if (payload.userId) userIds.add(payload.userId);
+		if (payload.recipientOwnerId) userIds.add(payload.recipientOwnerId);
+
+		if (userIds.size === 0) {
 			this.logger.debug(
 				`skip activity persist type=${event.type} eventId=${event.eventId} (no userId)`,
 			);
 			return;
 		}
 
-		try {
-			await this.appendForUser(userId, event.type, event.payload, event.eventId);
-		} catch (err) {
-			if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-				return;
+		for (const userId of userIds) {
+			try {
+				await this.appendForUser(
+					userId,
+					event.type,
+					event.payload,
+					`${event.eventId}:${userId}`,
+				);
+			} catch (err) {
+				if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+					continue;
+				}
+				throw err;
 			}
-			throw err;
 		}
 	}
 

@@ -47,7 +47,7 @@ export class OutboxService {
 					status: extra.status,
 					currentStep: extra.currentStep ?? null,
 					fromWalletId: ctx.fromWalletId,
-					toWalletId: extra.toWalletId ?? null,
+					toWalletId: extra.toWalletId ?? ctx.toWalletId ?? null,
 					toIdentifier: ctx.toWalletIdentifier,
 					amount: ctx.amount,
 					currency: ctx.currency,
@@ -57,6 +57,7 @@ export class OutboxService {
 					holdId: extra.holdId ?? null,
 					failureReason: extra.failureReason ?? null,
 					initiatorId: ctx.initiatorId ?? null,
+					recipientOwnerId: ctx.recipientOwnerId ?? null,
 				} as Prisma.InputJsonValue,
 			},
 		});

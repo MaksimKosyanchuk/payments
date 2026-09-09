@@ -43,19 +43,21 @@ export interface LedgerWalletView {
 export class LedgerClient {
 	private readonly logger = new Logger(LedgerClient.name);
 	private readonly baseUrl: string;
+	private readonly serviceKey: string;
 	private readonly breaker: CircuitBreaker;
 
 	constructor(private readonly config: ConfigService) {
 		this.baseUrl = (
 			this.config.get<string>('LEDGER_SERVICE_URL') ?? 'http://localhost:3001'
 		).replace(/\/$/, '');
+		this.serviceKey = (this.config.get<string>('LEDGER_SERVICE_API_KEY') ?? '').trim();
 		const threshold = Number(this.config.get('LEDGER_CIRCUIT_FAILURES') ?? 5);
 		const cooldown = Number(this.config.get('LEDGER_CIRCUIT_COOLDOWN_MS') ?? 30_000);
 		this.breaker = new CircuitBreaker(threshold, cooldown, 'ledger');
 	}
 
 	async getWallet(walletId: string): Promise<LedgerWalletView> {
-		return this.request<LedgerWalletView>('GET', `/wallets/${walletId}`);
+		return this.request<LedgerWalletView>('GET', `/internal/wallets/${walletId}`);
 	}
 
 	async getHold(holdId: string): Promise<LedgerHold> {
@@ -127,6 +129,10 @@ export class LedgerClient {
 		const url = `${this.baseUrl}${path}`;
 		this.logger.debug(`${method} ${url}`);
 
+		if (!this.serviceKey) {
+			throw new LedgerHttpError('LEDGER_SERVICE_API_KEY is not configured', 0, null);
+		}
+
 		return this.breaker.exec(async () => {
 			let response: Response;
 			try {
@@ -135,6 +141,7 @@ export class LedgerClient {
 					headers: {
 						'content-type': 'application/json',
 						accept: 'application/json',
+						'x-service-key': this.serviceKey,
 					},
 					body: body === undefined ? undefined : JSON.stringify(body),
 				});
