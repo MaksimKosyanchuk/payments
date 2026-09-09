@@ -64,6 +64,7 @@ services:
         env_file: ./apps/ledger-service/.env.example
         environment:
             DATABASE_HOST: ledger-db
+            DATABASE_PORT: 5432
             DATABASE_URL: postgresql://ledger:ledger@ledger-db:5432/ledger?schema=public
             REDIS_URL: redis://redis:6379
         depends_on:
@@ -151,9 +152,12 @@ services:
             NOTIFICATIONS_WS_URL: ws://notifications-service:3003
             PAYMENTS_ADMIN_API_KEY: change-me-admin-trace-key
         depends_on:
-            - ledger-service
-            - payments-service
-            - notifications-service
+            ledger-service:
+                condition: service_healthy
+            payments-service:
+                condition: service_healthy
+            notifications-service:
+                condition: service_healthy
         ports:
             - "3000:3000"
         healthcheck:

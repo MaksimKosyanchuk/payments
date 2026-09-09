@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { OutboxMessage } from '@prisma/client';
 import { QueueService } from '../queue/queue.service';
 import { OutboxService } from './outbox.service';
 
