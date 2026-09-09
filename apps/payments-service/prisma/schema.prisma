@@ -10,12 +10,16 @@ datasource db {
 
 enum TransferStatus {
   Pending
-  FraudChecked
   Held
   Credited
   Completed
   Compensating
   Failed
+}
+
+enum CompensationAction {
+  releaseHold
+  refundSender
 }
 
 enum SagaStepStatus {
@@ -50,11 +54,14 @@ model Transfer {
   toIdentifier   String?
   amount         Decimal        @db.Decimal(18, 2)
   currency       String         @db.VarChar(3)
-  fxRate         Decimal?       @db.Decimal(18, 8)
+  toCurrency     String         @db.VarChar(3)
+  amountTo       Decimal        @db.Decimal(18, 2)
+  fxRate         Decimal        @db.Decimal(18, 8) @default(1)
   status         TransferStatus @default(Pending)
   currentStep    String?
   holdId         String?        @db.Uuid
   failureReason  String?
+  compensationAction CompensationAction?
   attempts       Int            @default(0)
   nextRetryAt    DateTime?
   correlationId  String?

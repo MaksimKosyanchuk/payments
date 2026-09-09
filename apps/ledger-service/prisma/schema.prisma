@@ -37,7 +37,7 @@ model User {
   wallets Wallet[]
 }
 
-/// Account identity only — balance lives in WalletBalance (projection).
+/// Account identity only — balance = fold of LedgerEvent from zero (no projection table).
 model Wallet {
   id        String   @id @default(uuid()) @db.Uuid
   ownerId   String   @db.Uuid
@@ -45,9 +45,8 @@ model Wallet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner   User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  balance WalletBalance?
-  holds   Hold[]
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  holds Hold[]
 
   @@index([ownerId])
   @@index([ownerId, currency])
@@ -71,19 +70,6 @@ model LedgerEvent {
   @@index([type, occurredAt])
   @@index([correlationId])
   @@map("ledger_events")
-}
-
-/// CQRS read model: available + held = total. Never write money here without an event.
-model WalletBalance {
-  walletId     String  @id @db.Uuid
-  available    Decimal @default(0) @db.Decimal(18, 2)
-  held         Decimal @default(0) @db.Decimal(18, 2)
-  currency     String  @db.VarChar(3)
-  asOfVersion  Int     @default(0)
-
-  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
-
-  @@map("wallet_balances")
 }
 
 /// Double-entry journal lines. Per transactionId: sum(debit) = sum(credit).

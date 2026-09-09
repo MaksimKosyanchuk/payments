@@ -1,9 +1,19 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { ActivityModule } from './activity/activity.module';
+import { ConsumerModule } from './consumer/consumer.module';
 import { HealthController } from './health.controller';
+import { PrismaModule } from './prisma/prisma.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
-// Проєкт навмисно порожній: підписка на брокер подій, WebSocket-шлюз
-// і формування стрічки активності — з нуля (див. ТЗ, розділ 4.3).
 @Module({
+	imports: [
+		ConfigModule.forRoot({ isGlobal: true }),
+		PrismaModule,
+		ActivityModule,
+		RealtimeModule,
+		ConsumerModule,
+	],
 	controllers: [HealthController],
 })
 export class AppModule {}

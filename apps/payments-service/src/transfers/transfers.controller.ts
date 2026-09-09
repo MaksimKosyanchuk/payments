@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
 import { TransfersService } from './transfers.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 
@@ -6,12 +6,9 @@ import { CreateTransferDto } from './dto/create-transfer.dto';
 export class TransfersController {
 	constructor(private readonly transfers: TransfersService) {}
 
-	// TODO: бізнес-логіка саги переказу ще не реалізована.
-	// Каркас контролера й DTO є — реалізуйте кроки саги, компенсацію
-	// й ідемпотентність у TransfersService (див. ТЗ, розділ 4.2).
 	@Post()
-	create(@Body() dto: CreateTransferDto) {
-		return this.transfers.create(dto);
+	create(@Body() dto: CreateTransferDto, @Headers('idempotency-key') idempotencyKey?: string) {
+		return this.transfers.create(dto, idempotencyKey);
 	}
 
 	@Get(':id')
