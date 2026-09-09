@@ -1,17 +1,18 @@
 {
-    "devDependencies": {
-        "@eslint/js": "^9.22.0",
-        "eslint": "^9.22.0",
-        "eslint-config-prettier": "^10.1.8",
-        "prettier": "^3.9.6",
-        "typescript": "^5.8.2",
-        "typescript-eslint": "^8.70.0"
-    },
-    "scripts": {
-        "lint": "eslint \"apps/*/src/**/*.{ts,tsx}\" \"apps/frontend/{app,lib}/**/*.{ts,tsx}\"",
-        "lint:fix": "eslint \"apps/*/src/**/*.{ts,tsx}\" \"apps/frontend/{app,lib}/**/*.{ts,tsx}\" --fix",
-        "format": "prettier --write \"apps/*/src/**/*.{ts,tsx,js,json}\" \"apps/frontend/{app,lib}/**/*.{ts,tsx,js}\"",
-        "format:check": "prettier --check \"apps/*/src/**/*.{ts,tsx,js,json}\" \"apps/frontend/{app,lib}/**/*.{ts,tsx,js}\"",
-        "test:integration": "node scripts/integration-tests.mjs"
-    }
+	"devDependencies": {
+		"@eslint/js": "^9.22.0",
+		"eslint": "^9.22.0",
+		"eslint-config-prettier": "^10.1.8",
+		"prettier": "^3.9.6",
+		"typescript": "^5.8.2",
+		"typescript-eslint": "^8.70.0"
+	},
+	"scripts": {
+		"lint": "eslint \"apps/*/src/**/*.{ts,tsx}\" \"apps/frontend/{app,lib}/**/*.{ts,tsx}\"",
+		"lint:fix": "eslint \"apps/*/src/**/*.{ts,tsx}\" \"apps/frontend/{app,lib}/**/*.{ts,tsx}\" --fix",
+		"format": "prettier --write \"apps/*/src/**/*.{ts,tsx,js,json}\" \"apps/frontend/{app,lib}/**/*.{ts,tsx,js}\"",
+		"format:check": "prettier --check \"apps/*/src/**/*.{ts,tsx,js,json}\" \"apps/frontend/{app,lib}/**/*.{ts,tsx,js}\"",
+		"test:unit": "npm --prefix apps/ledger-service test -- --runInBand && npm --prefix apps/payments-service test -- --runInBand && npm --prefix apps/notifications-service test -- --runInBand",
+		"test:integration": "node scripts/integration-tests.mjs"
+	}
 }
