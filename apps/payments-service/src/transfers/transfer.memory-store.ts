@@ -6,6 +6,12 @@ import { TransferRecord } from './transfer.types';
 export class MemoryTransferStore {
 	private readonly byId = new Map<string, TransferRecord>();
 	private readonly byIdempotencyKey = new Map<string, string>();
+	readonly steps: Array<{
+		sagaId: string;
+		step: string;
+		status: 'started' | 'succeeded' | 'failed' | 'compensated' | 'skipped';
+		error?: string | null;
+	}> = [];
 
 	async findUnique(args: {
 		where: { id?: string; idempotencyKey?: string };
@@ -58,5 +64,14 @@ export class MemoryTransferStore {
 			.filter((t) => t.fromWalletId === walletId || t.toWalletId === walletId)
 			.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 			.slice(0, take);
+	}
+
+	async appendStep(input: {
+		sagaId: string;
+		step: string;
+		status: 'started' | 'succeeded' | 'failed' | 'compensated' | 'skipped';
+		error?: string | null;
+	}): Promise<void> {
+		this.steps.push(input);
 	}
 }

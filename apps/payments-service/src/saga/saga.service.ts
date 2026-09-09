@@ -54,6 +54,11 @@ export class SagaService {
 			status: 'Pending',
 			currentStep: 'start',
 		});
+		await this.transfer.appendStep({
+			sagaId: ctx.transferId,
+			step: 'start',
+			status: 'started',
+		});
 
 		const fxLocked = await this.lockFx(ctx);
 		if (!fxLocked.ok) {
@@ -288,6 +293,16 @@ export class SagaService {
 				...(patch.nextRetryAt !== undefined ? { nextRetryAt: patch.nextRetryAt } : {}),
 			},
 		});
+		if (patch.currentStep) {
+			const stepStatus =
+				status === 'Completed' ? 'succeeded' : status === 'Failed' ? 'failed' : 'started';
+			await this.transfer.appendStep({
+				sagaId: transferId,
+				step: patch.currentStep,
+				status: stepStatus,
+				error: patch.failureReason ?? null,
+			});
+		}
 		this.metrics.sagaSteps.inc({
 			step: patch.currentStep ?? status,
 			status,

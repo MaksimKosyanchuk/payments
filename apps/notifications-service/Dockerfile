@@ -5,4 +5,4 @@ RUN npm install
 COPY . .
 RUN npm run build
 EXPOSE 3003
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]

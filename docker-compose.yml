@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
     ledger-db:
         image: postgres:16-alpine
@@ -75,6 +73,18 @@ services:
                 condition: service_healthy
         ports:
             - "3001:3001"
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "node",
+                    "-e",
+                    "fetch('http://127.0.0.1:3001/metrics').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+            start_period: 15s
 
     payments-service:
         build: ./apps/payments-service
@@ -88,11 +98,23 @@ services:
             payments-db:
                 condition: service_healthy
             ledger-service:
-                condition: service_started
+                condition: service_healthy
             redis:
                 condition: service_healthy
         ports:
             - "3002:3002"
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "node",
+                    "-e",
+                    "fetch('http://127.0.0.1:3002/metrics').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+            start_period: 20s
 
     notifications-service:
         build: ./apps/notifications-service
@@ -107,6 +129,18 @@ services:
                 condition: service_healthy
         ports:
             - "3003:3003"
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "node",
+                    "-e",
+                    "fetch('http://127.0.0.1:3003/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+            start_period: 20s
 
     frontend:
         build: ./apps/frontend
@@ -122,6 +156,18 @@ services:
             - notifications-service
         ports:
             - "3000:3000"
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "node",
+                    "-e",
+                    "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+            start_period: 20s
 
 volumes:
     ledger-db-data:

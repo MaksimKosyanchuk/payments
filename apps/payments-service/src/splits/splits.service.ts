@@ -93,28 +93,39 @@ export class SplitsService {
 			throw new BadRequestException('Учасники мають бути унікальними');
 		}
 
-		const bill = await this.prisma.splitBill.create({
-			data: {
-				idempotencyKey,
-				initiatorId: dto.initiatorId,
-				initiatorEmail: dto.initiatorEmail.toLowerCase(),
-				toWalletId: dto.toWalletId,
-				total: dto.total,
-				currency,
-				title: dto.title?.trim() || null,
-				dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
-				status: 'Pending',
-				shares: {
-					create: resolved.map((r) => ({
-						payerId: r.userId,
-						payerEmail: r.email,
-						amount: r.amount,
-						status: 'Pending' as SplitShareStatus,
-					})),
+		let bill;
+		try {
+			bill = await this.prisma.splitBill.create({
+				data: {
+					idempotencyKey,
+					initiatorId: dto.initiatorId,
+					initiatorEmail: dto.initiatorEmail.toLowerCase(),
+					toWalletId: dto.toWalletId,
+					total: dto.total,
+					currency,
+					title: dto.title?.trim() || null,
+					dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
+					status: 'Pending',
+					shares: {
+						create: resolved.map((r) => ({
+							payerId: r.userId,
+							payerEmail: r.email,
+							amount: r.amount,
+							status: 'Pending' as SplitShareStatus,
+						})),
+					},
 				},
-			},
-			include: { shares: true },
-		});
+				include: { shares: true },
+			});
+		} catch (error) {
+			if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+				const raced = await this.prisma.splitBill.findUnique({ where: { idempotencyKey } });
+				if (raced) {
+					return this.getById(raced.id, dto.initiatorId);
+				}
+			}
+			throw error;
+		}
 
 		await this.reaggregateBill(bill.id);
 		const fresh = await this.prisma.splitBill.findUnique({

@@ -128,6 +128,17 @@ describe('SagaService (TZ one-hold + FX)', () => {
 		const row = await store.findUnique({ where: { id: baseCtx.transferId } });
 		expect(row?.status).toBe('Completed');
 		expect(row?.fxRate).toBe(1);
+		expect((store as unknown as MemoryTransferStore).steps.map((step) => step.step)).toEqual(
+			expect.arrayContaining([
+				'start',
+				'lockFx',
+				'assertSenderCanPay',
+				'placeHold',
+				'captureHold',
+				'creditRecipient',
+				'complete',
+			]),
+		);
 		expect(outbox.enqueueTransferEvent.mock.calls.map((c) => c[0])).toEqual([
 			TRANSFER_OUTBOX_EVENT.Started,
 			TRANSFER_OUTBOX_EVENT.BalanceChecked,
