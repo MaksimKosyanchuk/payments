@@ -11,6 +11,7 @@ import {
 	TransferSagaContext,
 	TransferStatus,
 } from '../transfers/transfer.types';
+import { MetricsService } from '../observability/metrics';
 
 const COMPENSATION_BACKOFF_MS = 5_000;
 const COMPENSATION_MAX_ATTEMPTS = 20;
@@ -24,6 +25,7 @@ const COMPENSATION_MAX_ATTEMPTS = 20;
 @Injectable()
 export class SagaService {
 	private readonly logger = new Logger(SagaService.name);
+	private readonly startedAt = new Map<string, number>();
 
 	constructor(
 		private readonly transfer: TransferStore,
@@ -31,6 +33,7 @@ export class SagaService {
 		private readonly fx: FxService,
 		private readonly outbox: OutboxService,
 		private readonly queue: QueueService,
+		private readonly metrics: MetricsService,
 	) {}
 
 	async executeTransfer(ctx: TransferSagaContext): Promise<void> {
@@ -43,6 +46,7 @@ export class SagaService {
 			);
 			return;
 		}
+		this.startedAt.set(ctx.transferId, Date.now());
 
 		let holdId: string | null = null;
 
@@ -284,6 +288,10 @@ export class SagaService {
 				...(patch.nextRetryAt !== undefined ? { nextRetryAt: patch.nextRetryAt } : {}),
 			},
 		});
+		this.metrics.sagaSteps.inc({
+			step: patch.currentStep ?? status,
+			status,
+		});
 	}
 
 	/**
@@ -429,6 +437,7 @@ export class SagaService {
 	}
 
 	private async complete(ctx: TransferSagaContext): Promise<void> {
+		this.observeDuration(ctx.transferId, 'completed');
 		await this.setStatus(ctx.transferId, 'Completed', {
 			currentStep: 'complete',
 			failureReason: null,
@@ -448,6 +457,7 @@ export class SagaService {
 		failureReason: string,
 		holdId?: string | null,
 	): Promise<void> {
+		this.observeDuration(ctx.transferId, 'failed');
 		await this.setStatus(ctx.transferId, 'Failed', {
 			currentStep: step,
 			failureReason,
@@ -461,6 +471,14 @@ export class SagaService {
 			holdId: holdId ?? null,
 			failureReason,
 		});
+	}
+
+	private observeDuration(transferId: string, status: string): void {
+		const started = this.startedAt.get(transferId);
+		if (started !== undefined) {
+			this.metrics.sagaDuration.observe({ status }, (Date.now() - started) / 1000);
+			this.startedAt.delete(transferId);
+		}
 	}
 
 	private async emit(

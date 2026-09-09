@@ -97,6 +97,7 @@ model SagaStep {
 
 model SplitBill {
   id             String          @id @default(uuid()) @db.Uuid
+  idempotencyKey String?         @unique
   initiatorId    String          @db.Uuid
   initiatorEmail String?
   /// Wallet that receives all share payments (must belong to initiator).

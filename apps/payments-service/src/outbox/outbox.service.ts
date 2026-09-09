@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransferOutboxEventType } from '../transfers/transfer.events';
 import { TransferSagaContext } from '../transfers/transfer.types';
+import { getTraceparent } from '../observability/trace-context';
 
 @Injectable()
 export class OutboxService {
@@ -36,7 +37,10 @@ export class OutboxService {
 				type,
 				correlationId: correlationId ?? null,
 				publishedAt: null,
-				payload: payload as Prisma.InputJsonValue,
+				payload: {
+					...payload,
+					traceparent: getTraceparent() ?? null,
+				} as Prisma.InputJsonValue,
 			},
 		});
 	}

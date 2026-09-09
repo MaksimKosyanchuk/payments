@@ -2,42 +2,57 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NextFunction, Request, Response } from 'express';
-import { randomUUID } from 'node:crypto';
+import { trace } from '@opentelemetry/api';
 import { AppModule } from './app.module';
+import { MetricsService } from './observability/metrics';
+import { startTelemetry } from './observability/telemetry';
+import { newTraceparent, runWithTraceparent } from './observability/trace-context';
 
 async function bootstrap() {
+	await startTelemetry('payments-service');
 	const app = await NestFactory.create(AppModule);
 	const logger = new Logger('PaymentsService');
+	const metrics = app.get(MetricsService);
+	const tracer = trace.getTracer('payments-service');
 
 	app.use((req: Request, res: Response, next: NextFunction) => {
-		const traceId = (req.headers['x-correlation-id'] as string | undefined) ?? randomUUID();
+		const traceparent =
+			(req.headers.traceparent as string | undefined) ??
+			(req.headers['x-correlation-id'] as string | undefined) ??
+			newTraceparent();
+		const traceId = traceparent;
 		res.setHeader('x-correlation-id', traceId);
-		const startedAt = Date.now();
-		res.on('finish', () => {
-			logger.log(
-				JSON.stringify({
-					event: 'http_request',
-					traceId,
-					method: req.method,
-					url: req.originalUrl,
-					statusCode: res.statusCode,
-					durationMs: Date.now() - startedAt,
-				}),
-			);
+		res.setHeader('traceparent', traceparent);
+		tracer.startActiveSpan(`${req.method} ${req.path}`, (span) => {
+			const startedAt = Date.now();
+			res.on('finish', () => {
+				span.setAttribute('http.status_code', res.statusCode);
+				span.setAttribute('traceparent', traceId);
+				span.end();
+				logger.log(
+					JSON.stringify({
+						event: 'http_request',
+						traceId,
+						method: req.method,
+						url: req.originalUrl,
+						statusCode: res.statusCode,
+						durationMs: Date.now() - startedAt,
+					}),
+				);
+				metrics.observeRequest(
+					req.method,
+					req.path,
+					res.statusCode,
+					Date.now() - startedAt,
+				);
+			});
+			runWithTraceparent(traceparent, next);
 		});
-		next();
 	});
 
-	app.use('/metrics', (_req: Request, res: Response) => {
+	app.use('/metrics', async (_req: Request, res: Response) => {
 		res.setHeader('Content-Type', 'text/plain; version=0.0.4');
-		res.send(
-			[
-				'http_requests_total 0',
-				'http_requests_ok_total 0',
-				'http_requests_error_total 0',
-				'payments_service_up 1',
-			].join('\n'),
-		);
+		res.send(await metrics.render());
 	});
 
 	app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

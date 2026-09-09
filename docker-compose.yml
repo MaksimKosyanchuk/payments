@@ -83,6 +83,7 @@ services:
             DATABASE_URL: postgresql://payments:payments@payments-db:5432/payments?schema=public
             LEDGER_SERVICE_URL: http://ledger-service:3001
             REDIS_URL: redis://redis:6379
+            PAYMENTS_ADMIN_API_KEY: change-me-admin-trace-key
         depends_on:
             payments-db:
                 condition: service_healthy
@@ -114,6 +115,7 @@ services:
             LEDGER_SERVICE_URL: http://ledger-service:3001
             PAYMENTS_SERVICE_URL: http://payments-service:3002
             NOTIFICATIONS_WS_URL: ws://notifications-service:3003
+            PAYMENTS_ADMIN_API_KEY: change-me-admin-trace-key
         depends_on:
             - ledger-service
             - payments-service

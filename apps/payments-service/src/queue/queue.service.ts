@@ -59,10 +59,7 @@ export class QueueService implements OnModuleDestroy {
 	 * Cache sender/recipient for a transfer so notifications can ACL `subscribe`.
 	 * Recipient may be null until lockFx resolves destination.
 	 */
-	async setTransferParties(
-		transferId: string,
-		parties: TransferParties,
-	): Promise<void> {
+	async setTransferParties(transferId: string, parties: TransferParties): Promise<void> {
 		if (!this.redis) {
 			this.logger.warn(`skip setTransferParties ${transferId}: Redis disabled`);
 			return;
@@ -90,6 +87,12 @@ export class QueueService implements OnModuleDestroy {
 			JSON.stringify(message.payload),
 			'correlationId',
 			message.correlationId ?? '',
+			'traceparent',
+			typeof message.payload === 'object' &&
+				message.payload &&
+				'traceparent' in message.payload
+				? String((message.payload as { traceparent?: unknown }).traceparent ?? '')
+				: '',
 			'outboxId',
 			message.id,
 			'occurredAt',

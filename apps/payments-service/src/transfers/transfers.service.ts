@@ -105,6 +105,10 @@ export class TransfersService {
 		return this.transfer.listForWallet(walletId.trim(), 50);
 	}
 
+	async listRecentWithSteps(take = 20) {
+		return this.transfer.listRecentWithSteps(take);
+	}
+
 	private resolveIdempotencyKey(dto: CreateTransferDto, header?: string): string {
 		const key = (header?.trim() || dto.idempotencyKey?.trim() || '').trim();
 		if (!key) {

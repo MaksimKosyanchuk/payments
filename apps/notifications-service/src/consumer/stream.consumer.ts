@@ -1,9 +1,4 @@
-import {
-	Injectable,
-	Logger,
-	OnModuleDestroy,
-	OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { ActivityService } from '../activity/activity.service';
@@ -11,6 +6,7 @@ import { DomainEvent } from '../events/domain-event';
 import { isTransferEvent } from '../events/transfer.events';
 import { isSplitEvent } from '../events/split.events';
 import { TransferGateway } from '../realtime/transfer.gateway';
+import { MetricsService } from '../observability/metrics';
 
 @Injectable()
 export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
@@ -26,13 +22,13 @@ export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
 		private readonly config: ConfigService,
 		private readonly activity: ActivityService,
 		private readonly gateway: TransferGateway,
+		private readonly metrics: MetricsService,
 	) {
 		const url = this.config.get<string>('REDIS_URL');
 		this.group = this.config.get<string>('REDIS_CONSUMER_GROUP') ?? 'notifications';
 		this.consumerName =
 			this.config.get<string>('REDIS_CONSUMER_NAME') ?? `notifications-${process.pid}`;
-		const payments =
-			this.config.get<string>('PAYMENTS_EVENTS_STREAM') ?? 'payments.events';
+		const payments = this.config.get<string>('PAYMENTS_EVENTS_STREAM') ?? 'payments.events';
 		const ledger = this.config.get<string>('LEDGER_EVENTS_STREAM') ?? 'ledger.events';
 		const listenLedger = this.config.get<string>('CONSUME_LEDGER_EVENTS') === 'true';
 		this.streams = listenLedger ? [payments, ledger] : [payments];
@@ -59,9 +55,7 @@ export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
 		await this.ensureGroups();
 		this.running = true;
 		this.loopPromise = this.loop();
-		this.logger.log(
-			`consumer started group=${this.group} streams=${this.streams.join(',')}`,
-		);
+		this.logger.log(`consumer started group=${this.group} streams=${this.streams.join(',')}`);
 	}
 
 	async onModuleDestroy(): Promise<void> {
@@ -126,20 +120,20 @@ export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
 		}
 	}
 
-	private async handleEntry(
-		stream: string,
-		streamId: string,
-		fields: string[],
-	): Promise<void> {
+	private async handleEntry(stream: string, streamId: string, fields: string[]): Promise<void> {
 		if (!this.redis) {
 			return;
 		}
 		const map = fieldsToMap(fields);
 		const event = toDomainEvent(stream, streamId, map);
+		this.logger.debug(
+			`consume event=${event.eventId} type=${event.type} traceparent=${String(event.payload.traceparent ?? map.traceparent ?? '')}`,
+		);
 
 		try {
 			const claimed = await this.activity.claimEvent(event.eventId, event.type);
 			if (!claimed) {
+				this.metrics.events.inc({ type: event.type, status: 'deduplicated' });
 				this.logger.debug(`dedup skip eventId=${event.eventId}`);
 				await this.redis.xack(stream, this.group, streamId);
 				return;
@@ -156,7 +150,9 @@ export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
 			}
 
 			await this.redis.xack(stream, this.group, streamId);
+			this.metrics.events.inc({ type: event.type, status: 'processed' });
 		} catch (err) {
+			this.metrics.events.inc({ type: event.type, status: 'failed' });
 			this.logger.error(
 				`handle failed streamId=${streamId}: ${
 					err instanceof Error ? err.message : String(err)
@@ -175,11 +171,7 @@ function fieldsToMap(fields: string[]): Record<string, string> {
 	return out;
 }
 
-function toDomainEvent(
-	stream: string,
-	streamId: string,
-	map: Record<string, string>,
-): DomainEvent {
+function toDomainEvent(stream: string, streamId: string, map: Record<string, string>): DomainEvent {
 	let payload: Record<string, unknown> = {};
 	if (map.payload) {
 		try {

@@ -111,6 +111,29 @@ describe('WalletsService (events-only balance)', () => {
 		expect(em.save).toHaveBeenCalled();
 	});
 
+	it('deposit journal obeys the double-entry invariant', async () => {
+		em.findOne.mockImplementation(async (cls: unknown, opts?: { order?: unknown }) => {
+			if (cls === Wallet) return { id: 'wallet-1', ownerId: 'u1', currency: 'USD' };
+			if (cls === LedgerEvent && opts?.order) return eventRows[eventRows.length - 1];
+			return null;
+		});
+
+		await service.deposit('wallet-1', 50);
+
+		const journalLines = em.save.mock.calls
+			.map(([entity]) => entity as Record<string, unknown>)
+			.filter((entity) => entity.accountId && entity.side && entity.amount);
+		const debitTotal = journalLines
+			.filter((line) => line.side === 'debit')
+			.reduce((total, line) => total + Number(line.amount), 0);
+		const creditTotal = journalLines
+			.filter((line) => line.side === 'credit')
+			.reduce((total, line) => total + Number(line.amount), 0);
+
+		expect(journalLines).toHaveLength(2);
+		expect(debitTotal).toBe(creditTotal);
+	});
+
 	it('withdraw rejects when available is insufficient', async () => {
 		const { BadRequestException } = await import('@nestjs/common');
 		em.findOne.mockImplementation(async (cls: unknown) => {
@@ -130,8 +153,6 @@ describe('WalletsService (events-only balance)', () => {
 			},
 		]);
 
-		await expect(service.withdraw('wallet-1', 500)).rejects.toBeInstanceOf(
-			BadRequestException,
-		);
+		await expect(service.withdraw('wallet-1', 500)).rejects.toBeInstanceOf(BadRequestException);
 	});
 });

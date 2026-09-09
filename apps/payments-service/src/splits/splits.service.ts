@@ -29,7 +29,15 @@ export class SplitsService {
 		private readonly fx: FxService,
 	) {}
 
-	async create(dto: CreateSplitBillDto) {
+	async create(dto: CreateSplitBillDto, idempotencyKeyHeader?: string) {
+		const idempotencyKey = idempotencyKeyHeader?.trim();
+		if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+			throw new BadRequestException('Idempotency-Key header must be 8-128 characters');
+		}
+		const existing = await this.prisma.splitBill.findUnique({ where: { idempotencyKey } });
+		if (existing) {
+			return this.getById(existing.id, dto.initiatorId);
+		}
 		if (Math.round(dto.total * 100) / 100 !== dto.total) {
 			throw new BadRequestException('total must have at most 2 decimal places');
 		}
@@ -43,15 +51,11 @@ export class SplitsService {
 			throw new BadRequestException('currency must be USD, EUR or UAH');
 		}
 		if (dto.currency && dto.currency.toUpperCase() !== currency) {
-			throw new BadRequestException(
-				`currency має збігатися з гаманцем (${currency})`,
-			);
+			throw new BadRequestException(`currency має збігатися з гаманцем (${currency})`);
 		}
 
 		const initEmail = dto.initiatorEmail.trim().toLowerCase();
-		const participants = this.normalizeParticipants(dto).filter(
-			(p) => p.email !== initEmail,
-		);
+		const participants = this.normalizeParticipants(dto).filter((p) => p.email !== initEmail);
 		if (participants.length === 0) {
 			throw new BadRequestException(
 				'Додайте хоча б одного учасника (не себе) — ініціатор лише отримує',
@@ -91,6 +95,7 @@ export class SplitsService {
 
 		const bill = await this.prisma.splitBill.create({
 			data: {
+				idempotencyKey,
 				initiatorId: dto.initiatorId,
 				initiatorEmail: dto.initiatorEmail.toLowerCase(),
 				toWalletId: dto.toWalletId,
@@ -161,12 +166,9 @@ export class SplitsService {
 		}
 
 		const n = bill.shares.length + 1;
-		const defaultAmount =
-			Math.round((Number(bill.total) / n) * 100) / 100;
+		const defaultAmount = Math.round((Number(bill.total) / n) * 100) / 100;
 		const shareAmount =
-			amount != null && amount > 0
-				? Math.round(amount * 100) / 100
-				: defaultAmount;
+			amount != null && amount > 0 ? Math.round(amount * 100) / 100 : defaultAmount;
 
 		await this.prisma.splitShare.create({
 			data: {
@@ -222,7 +224,16 @@ export class SplitsService {
 		return this.toView(bill);
 	}
 
-	async payShare(billId: string, shareId: string, dto: PaySplitShareDto) {
+	async payShare(
+		billId: string,
+		shareId: string,
+		dto: PaySplitShareDto,
+		idempotencyKeyHeader?: string,
+	) {
+		const requestedKey = idempotencyKeyHeader?.trim();
+		if (requestedKey && (requestedKey.length < 8 || requestedKey.length > 128)) {
+			throw new BadRequestException('Idempotency-Key header must be 8-128 characters');
+		}
 		const bill = await this.prisma.splitBill.findUnique({
 			where: { id: billId },
 			include: { shares: true },
@@ -255,7 +266,7 @@ export class SplitsService {
 			throw new BadRequestException('У рахунку немає гаманця для зарахування');
 		}
 
-		let idempotencyKey = `split-share:${share.id}`;
+		let idempotencyKey = requestedKey || `split-share:${share.id}`;
 		if (share.transferId) {
 			const existing = await this.transfers.getStatus(share.transferId);
 			if (existing.status === 'Completed') {
@@ -277,8 +288,10 @@ export class SplitsService {
 					transferStatus: existing.status,
 				};
 			}
-			// Failed transfer — new attempt
-			idempotencyKey = `split-share:${share.id}:retry-${Date.now()}`;
+			// A new caller-supplied key explicitly starts a new attempt after failure.
+			if (!requestedKey) {
+				idempotencyKey = `split-share:${share.id}:retry-${Date.now()}`;
+			}
 		}
 
 		await this.prisma.splitShare.update({
@@ -429,9 +442,8 @@ export class SplitsService {
 				shareId,
 				amount: Number(share.amount),
 				userId: share.payerId,
-				initiatorId: (
-					await this.prisma.splitBill.findUnique({ where: { id: billId } })
-				)?.initiatorId,
+				initiatorId: (await this.prisma.splitBill.findUnique({ where: { id: billId } }))
+					?.initiatorId,
 			},
 			shareId,
 		);
@@ -494,9 +506,7 @@ export class SplitsService {
 			return participants.map((p) => p.amount as number);
 		}
 		if (participants.some((p) => p.amount != null)) {
-			throw new BadRequestException(
-				'Або всі частки кастомні, або жодна (порівну)',
-			);
+			throw new BadRequestException('Або всі частки кастомні, або жодна (порівну)');
 		}
 		const n = participants.length;
 		const cents = Math.round(total * 100);
@@ -511,9 +521,7 @@ export class SplitsService {
 		return amounts;
 	}
 
-	private toView(
-		bill: Prisma.SplitBillGetPayload<{ include: { shares: true } }>,
-	) {
+	private toView(bill: Prisma.SplitBillGetPayload<{ include: { shares: true } }>) {
 		return {
 			id: bill.id,
 			initiatorId: bill.initiatorId,

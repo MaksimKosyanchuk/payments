@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CircuitBreaker } from './circuit-breaker';
+import { getTraceparent } from '../observability/trace-context';
 
 export class LedgerHttpError extends Error {
 	constructor(
@@ -142,15 +143,12 @@ export class LedgerClient {
 						'content-type': 'application/json',
 						accept: 'application/json',
 						'x-service-key': this.serviceKey,
+						...(getTraceparent() ? { traceparent: getTraceparent()! } : {}),
 					},
 					body: body === undefined ? undefined : JSON.stringify(body),
 				});
 			} catch (err) {
-				throw new LedgerHttpError(
-					`Ledger unreachable: ${(err as Error).message}`,
-					0,
-					null,
-				);
+				throw new LedgerHttpError(`Ledger unreachable: ${(err as Error).message}`, 0, null);
 			}
 
 			const text = await response.text();

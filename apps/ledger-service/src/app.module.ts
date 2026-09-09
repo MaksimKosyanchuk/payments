@@ -15,6 +15,7 @@ import { LedgerCommand } from './wallets/entities/ledger-command.entity';
 import { LedgerEvent } from './wallets/entities/ledger-event.entity';
 import { JournalEntry } from './wallets/entities/journal-entry.entity';
 import { OutboxMessage } from './wallets/entities/outbox-message.entity';
+import { MetricsService } from './observability/metrics';
 
 @Module({
 	imports: [
@@ -37,6 +38,7 @@ import { OutboxMessage } from './wallets/entities/outbox-message.entity';
 		ReconciliationModule,
 	],
 	providers: [
+		MetricsService,
 		{
 			provide: APP_GUARD,
 			useClass: ThrottlerGuard,

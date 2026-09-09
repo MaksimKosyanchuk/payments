@@ -9,6 +9,7 @@ import { OutboxService } from '../outbox/outbox.service';
 import { QueueService } from '../queue/queue.service';
 import { TransferRecord, TransferSagaContext } from '../transfers/transfer.types';
 import { TRANSFER_OUTBOX_EVENT } from '../transfers/transfer.events';
+import { MetricsService } from '../observability/metrics';
 
 describe('SagaService (TZ one-hold + FX)', () => {
 	let service: SagaService;
@@ -95,6 +96,7 @@ describe('SagaService (TZ one-hold + FX)', () => {
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				SagaService,
+				MetricsService,
 				FxService,
 				{ provide: ConfigService, useValue: { get: () => '600000' } },
 				{ provide: TransferStore, useClass: MemoryTransferStore },
@@ -177,6 +179,7 @@ describe('SagaService (TZ one-hold + FX)', () => {
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				SagaService,
+				MetricsService,
 				{ provide: FxService, useValue: shortTtlFx },
 				{ provide: TransferStore, useClass: MemoryTransferStore },
 				{ provide: LedgerClient, useValue: ledger },

@@ -30,9 +30,22 @@ type WalletRow = {
 	createdAt: string;
 };
 
+type TraceRow = {
+	id: string;
+	status: string;
+	currentStep: string | null;
+	failureReason: string | null;
+	amount: number;
+	currency: string;
+	createdAt: string;
+	durationMs: number;
+	steps: Array<{ id: string; step: string; status: string; error: string | null; at: string }>;
+};
+
 export default function AdminPage() {
 	const [summary, setSummary] = useState<AdminSummary | null>(null);
 	const [wallets, setWallets] = useState<WalletRow[]>([]);
+	const [traces, setTraces] = useState<TraceRow[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -44,19 +57,26 @@ export default function AdminPage() {
 					fetch('/api/admin/reconciliation'),
 					fetch('/api/admin/wallets'),
 				]);
+				const tracesRes = await fetch('/api/admin/traces?take=20');
 
-				if (!reconRes.ok || !walletsRes.ok) {
+				if (!reconRes.ok || !walletsRes.ok || !tracesRes.ok) {
 					const reconBody = await reconRes.json().catch(() => null);
 					const walletsBody = await walletsRes.json().catch(() => null);
+					const tracesBody = await tracesRes.json().catch(() => null);
 					throw new Error(
-						reconBody?.error ?? walletsBody?.error ?? 'Admin data is unavailable',
+						reconBody?.error ??
+							walletsBody?.error ??
+							tracesBody?.error ??
+							'Admin data is unavailable',
 					);
 				}
 
 				const recon = (await reconRes.json()) as AdminSummary;
 				const walletList = (await walletsRes.json()) as WalletRow[];
+				const traceList = (await tracesRes.json()) as TraceRow[];
 				setSummary(recon);
 				setWallets(walletList);
+				setTraces(traceList);
 			} catch (err) {
 				setError((err as Error).message);
 			} finally {
@@ -181,6 +201,40 @@ export default function AdminPage() {
 									<td style={{ padding: 10 }}>{wallet.currency}</td>
 									<td style={{ padding: 10 }}>
 										{new Date(wallet.createdAt).toLocaleString()}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			</section>
+
+			<section style={{ marginTop: 24 }}>
+				<h2>Recent saga traces</h2>
+				<div style={{ overflowX: 'auto', border: '1px solid #ddd', borderRadius: 8 }}>
+					<table style={{ width: '100%', borderCollapse: 'collapse' }}>
+						<thead>
+							<tr style={{ background: '#f7f7f7' }}>
+								<th style={{ textAlign: 'left', padding: 10 }}>Transfer</th>
+								<th style={{ textAlign: 'left', padding: 10 }}>Status</th>
+								<th style={{ textAlign: 'left', padding: 10 }}>Amount</th>
+								<th style={{ textAlign: 'left', padding: 10 }}>Duration</th>
+								<th style={{ textAlign: 'left', padding: 10 }}>Steps</th>
+							</tr>
+						</thead>
+						<tbody>
+							{traces.map((trace) => (
+								<tr key={trace.id} style={{ borderTop: '1px solid #eee' }}>
+									<td style={{ padding: 10 }}>{trace.id}</td>
+									<td style={{ padding: 10 }}>{trace.status}</td>
+									<td style={{ padding: 10 }}>
+										{trace.amount} {trace.currency}
+									</td>
+									<td style={{ padding: 10 }}>{trace.durationMs} ms</td>
+									<td style={{ padding: 10 }}>
+										{trace.steps
+											.map((step) => `${step.step}:${step.status}`)
+											.join(' → ')}
 									</td>
 								</tr>
 							))}

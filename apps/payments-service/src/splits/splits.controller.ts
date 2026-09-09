@@ -11,10 +11,15 @@ export class SplitsController {
 
 	@Post()
 	@ApiOperation({ summary: 'Create a split bill' })
+	@ApiHeader({
+		name: 'Idempotency-Key',
+		required: true,
+		description: '8-128 character key for exactly-once split creation',
+	})
 	@ApiResponse({ status: 201, description: 'Split bill with participant shares' })
 	@ApiResponse({ status: 400, description: 'Invalid participants or amounts' })
-	create(@Body() dto: CreateSplitBillDto) {
-		return this.splits.create(dto);
+	create(@Body() dto: CreateSplitBillDto, @Headers('idempotency-key') idempotencyKey?: string) {
+		return this.splits.create(dto, idempotencyKey);
 	}
 
 	@Get()
@@ -46,8 +51,8 @@ export class SplitsController {
 		@Param('id') id: string,
 		@Param('shareId') shareId: string,
 		@Body() dto: PaySplitShareDto,
-		@Headers('idempotency-key') _key?: string,
+		@Headers('idempotency-key') idempotencyKey?: string,
 	) {
-		return this.splits.payShare(id, shareId, dto);
+		return this.splits.payShare(id, shareId, dto, idempotencyKey);
 	}
 }

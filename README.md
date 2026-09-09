@@ -35,6 +35,7 @@ cd apps/ledger-service && npm test
 ## Знайдені закладні баги (ТЗ §3.2)
 
 ### 1. IDOR — читання чужого гаманця
+
 - **Проблема:** `GET /wallets/:id` віддавав проєкцію будь-якого гаманця без перевірки
   власника (спочатку навіть без JWT).
 - **Відтворення:** знати UUID чужого гаманця → `GET /wallets/:id` (або без токена на
@@ -43,6 +44,7 @@ cd apps/ledger-service && npm test
   saga — `@ServiceAuth()` / `x-service-key` і `GET /internal/wallets/:id`.
 
 ### 2. Хибно-зелений тест withdraw
+
 - **Проблема:** у стартері `apps/ledger-service/test/wallets.service.spec.ts` тест
   «does not allow withdrawing more than the current balance» викликав
   `service.withdraw(...).catch(...)` **без `await`**. Jest завершував тест до
@@ -52,6 +54,7 @@ cd apps/ledger-service && npm test
 - **Фікс:** `await expect(service.withdraw(...)).rejects.toBeInstanceOf(BadRequestException)`.
 
 ### 3. Race / double-spend на балансі (check-then-act)
+
 - **Проблема:** у стартері `deposit` / `withdraw` робили read-modify-write поля
   `wallet.balance` без транзакції й без блокування рядка: спочатку читали баланс і
   перевіряли достатність, потім рахували нове значення в пам’яті і `save`. Між
@@ -63,3 +66,28 @@ cd apps/ledger-service && npm test
 - **Фікс:** event sourcing + DB-транзакція + `pessimistic_write` на wallet row
   (`loadWallet(..., { lock: true })`) і унікальність `(streamId, version)` на
   подіях — перевірка available і append події в одному критичному секті.
+
+## Observability и admin traces
+
+Каждый backend публикует живые Prometheus-метрики на `/metrics`: HTTP request
+counter/histogram, а также saga-step, saga-duration и event-consumer metrics.
+`OTEL_EXPORTER_OTLP_ENDPOINT` включает OTLP trace exporter; без этой переменной
+локальный запуск остаётся рабочим. Входящий W3C `traceparent` возвращается в
+HTTP-ответе, передаётся payments → ledger и сохраняется в payments outbox/Redis
+event envelope, после чего логируется notifications consumer.
+
+Admin trace flow: Next BFF проверяет admin JWT на `/api/admin/traces`, затем
+передаёт server-side `x-admin-key` в payments endpoint
+`GET /transfers/admin/recent`. Ответ содержит transfer status, duration и
+упорядоченные `saga_steps`; эти данные отображаются на `/admin`.
+
+## Idempotency и acceptance tests
+
+`POST /transfers`, создание split bill и оплата split share используют
+`Idempotency-Key`. Split bill хранит ключ в уникальном поле `idempotencyKey`, а
+повторный запрос возвращает уже созданный bill. Повторная оплата share с тем же
+ключом не создаёт новую transfer saga.
+
+Ledger tests дополнительно проверяют double-entry равенство debit/credit и
+reconciliation с нулевым journal difference. Payments tests проверяют повторное
+создание split bill и saga compensation/idempotency paths.
