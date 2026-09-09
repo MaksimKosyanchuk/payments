@@ -37,4 +37,9 @@ export class CreateTransferDto {
 	@IsString()
 	@Length(8, 128)
 	idempotencyKey?: string;
+
+	/** Set by BFF from JWT — used for activity / WS user rooms. */
+	@IsOptional()
+	@IsUUID()
+	initiatorId?: string;
 }

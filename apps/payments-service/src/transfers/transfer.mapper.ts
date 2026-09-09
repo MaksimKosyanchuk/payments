@@ -20,6 +20,7 @@ export function toTransferRecord(row: Transfer): TransferRecord {
 		compensationAction: (row.compensationAction as CompensationAction | null) ?? null,
 		attempts: row.attempts,
 		nextRetryAt: row.nextRetryAt,
+		initiatorId: row.initiatorId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	};

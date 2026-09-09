@@ -42,6 +42,7 @@ export class TransferStore {
 				compensationAction: toPrismaCompensation(d.compensationAction) ?? null,
 				attempts: d.attempts,
 				nextRetryAt: d.nextRetryAt,
+				initiatorId: d.initiatorId,
 			},
 		});
 		return toTransferRecord(row);
@@ -76,6 +77,7 @@ export class TransferStore {
 						? { amountTo: new Prisma.Decimal(d.amountTo.toFixed(2)) }
 						: {}),
 					...(d.fxRate !== undefined ? { fxRate: new Prisma.Decimal(d.fxRate) } : {}),
+					...(d.initiatorId !== undefined ? { initiatorId: d.initiatorId } : {}),
 				},
 			});
 			return toTransferRecord(row);

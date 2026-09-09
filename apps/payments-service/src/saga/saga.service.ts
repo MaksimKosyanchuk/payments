@@ -180,6 +180,7 @@ export class SagaService {
 			toCurrency: row.toCurrency,
 			amountTo: row.amountTo,
 			fxRate: row.fxRate,
+			initiatorId: row.initiatorId ?? undefined,
 		};
 	}
 

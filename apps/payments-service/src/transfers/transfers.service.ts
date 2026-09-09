@@ -53,6 +53,7 @@ export class TransfersService {
 					compensationAction: null,
 					attempts: 0,
 					nextRetryAt: null,
+					initiatorId: dto.initiatorId ?? null,
 					createdAt: now,
 					updatedAt: now,
 				},
@@ -68,10 +69,10 @@ export class TransfersService {
 		}
 
 		const ctx = this.toSagaContext(transfer);
-		await this.sagaService.executeTransfer(ctx);
+		// Fire-and-forget so client can subscribe to WS progress before saga finishes.
+		void this.sagaService.executeTransfer(ctx).catch(() => undefined);
 
-		const fresh = await this.transfer.findUnique({ where: { id: transfer.id } });
-		return { id: transfer.id, status: fresh?.status ?? transfer.status };
+		return { id: transfer.id, status: 'Pending' };
 	}
 
 	async getStatus(id: string): Promise<TransferRecord> {
@@ -140,6 +141,7 @@ export class TransfersService {
 			toCurrency: transfer.toCurrency,
 			amountTo: transfer.amountTo,
 			fxRate: transfer.fxRate,
+			initiatorId: transfer.initiatorId ?? undefined,
 		};
 	}
 }

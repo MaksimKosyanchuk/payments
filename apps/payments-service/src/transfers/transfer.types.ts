@@ -47,6 +47,7 @@ export interface TransferRecord {
 	compensationAction: CompensationAction | null;
 	attempts: number;
 	nextRetryAt: Date | null;
+	initiatorId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 }

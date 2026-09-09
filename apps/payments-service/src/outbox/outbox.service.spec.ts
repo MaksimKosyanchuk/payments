@@ -56,6 +56,7 @@ describe('OutboxService', () => {
 				toCurrency: 'USD',
 				amountTo: 10,
 				fxRate: 1,
+				initiatorId: 'user-1',
 			},
 			{ status: 'Pending', currentStep: 'start' },
 		);
@@ -65,6 +66,10 @@ describe('OutboxService', () => {
 					type: TRANSFER_OUTBOX_EVENT.Started,
 					correlationId: 'tx-1',
 					publishedAt: null,
+					payload: expect.objectContaining({
+						initiatorId: 'user-1',
+						transferId: 'tx-1',
+					}),
 				}),
 			}),
 		);

@@ -93,7 +93,7 @@ export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
 	private async loop(): Promise<void> {
 		while (this.running && this.redis) {
 			try {
-				const result = await this.redis.xreadgroup(
+				const result = (await this.redis.xreadgroup(
 					'GROUP',
 					this.group,
 					this.consumerName,
@@ -104,7 +104,7 @@ export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
 					'STREAMS',
 					...this.streams,
 					...this.streams.map(() => '>'),
-				);
+				)) as [string, [string, string[]][]][] | null;
 				if (!result) {
 					continue;
 				}

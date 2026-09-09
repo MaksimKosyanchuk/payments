@@ -56,6 +56,7 @@ export class OutboxService {
 					fxRate: ctx.fxRate,
 					holdId: extra.holdId ?? null,
 					failureReason: extra.failureReason ?? null,
+					initiatorId: ctx.initiatorId ?? null,
 				} as Prisma.InputJsonValue,
 			},
 		});
