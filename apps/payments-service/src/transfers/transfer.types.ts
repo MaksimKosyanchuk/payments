@@ -27,6 +27,11 @@ export interface TransferSagaContext {
 	toWalletId?: string | null;
 	/** Ledger owner of destination wallet (for recipient WS / activity). */
 	recipientOwnerId?: string | null;
+	/**
+	 * Preferred recipient wallet currency (e.g. split bill currency).
+	 * lockFx uses this as preferCurrency when resolving destination.
+	 */
+	creditCurrency?: string;
 }
 
 /** What compensation step must succeed before we may mark Failed. */

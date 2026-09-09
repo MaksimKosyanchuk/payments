@@ -114,4 +114,50 @@ export class TransferStore {
 		});
 		return rows.map(toTransferRecord);
 	}
+
+	/** Admin: recent transfers with saga step timeline. */
+	async listRecentWithSteps(take = 20) {
+		const rows = await this.prisma.transfer.findMany({
+			orderBy: { createdAt: 'desc' },
+			take: Math.min(Math.max(take, 1), 100),
+			include: {
+				steps: { orderBy: { at: 'asc' } },
+			},
+		});
+		return rows.map((row) => {
+			const t = toTransferRecord(row);
+			const steps = row.steps.map((s) => ({
+				id: s.id,
+				step: s.step,
+				status: s.status,
+				error: s.error,
+				at: s.at.toISOString(),
+			}));
+			const durationMs =
+				row.updatedAt.getTime() - row.createdAt.getTime();
+			return {
+				...t,
+				createdAt: row.createdAt.toISOString(),
+				updatedAt: row.updatedAt.toISOString(),
+				durationMs,
+				steps,
+			};
+		});
+	}
+
+	async appendStep(input: {
+		sagaId: string;
+		step: string;
+		status: 'started' | 'succeeded' | 'failed' | 'compensated' | 'skipped';
+		error?: string | null;
+	}): Promise<void> {
+		await this.prisma.sagaStep.create({
+			data: {
+				sagaId: input.sagaId,
+				step: input.step,
+				status: input.status,
+				error: input.error ?? null,
+			},
+		});
+	}
 }

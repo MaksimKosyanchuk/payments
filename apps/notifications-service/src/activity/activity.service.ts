@@ -41,14 +41,22 @@ export class ActivityService {
 	}
 
 	/**
-	 * Persist activity for initiator and recipient (unique eventId per user).
+	 * Persist activity for users listed in payload
+	 * (initiatorId / userId / recipientOwnerId / userIds[]).
 	 */
 	async recordTransferActivity(event: DomainEvent): Promise<void> {
-		const payload = event.payload as TransferEventPayload;
+		const payload = event.payload as TransferEventPayload & {
+			userIds?: string[];
+		};
 		const userIds = new Set<string>();
 		if (payload.initiatorId) userIds.add(payload.initiatorId);
 		if (payload.userId) userIds.add(payload.userId);
 		if (payload.recipientOwnerId) userIds.add(payload.recipientOwnerId);
+		if (Array.isArray(payload.userIds)) {
+			for (const id of payload.userIds) {
+				if (id) userIds.add(id);
+			}
+		}
 
 		if (userIds.size === 0) {
 			this.logger.debug(

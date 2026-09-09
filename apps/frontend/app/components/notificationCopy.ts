@@ -14,6 +14,10 @@ export const PROGRESS_EVENT_TYPES = new Set([
 export const NOTIFY_EVENT_TYPES = new Set([
 	'TransferCompleted',
 	'TransferFailed',
+	'SplitBillCreated',
+	'SplitSharePaid',
+	'SplitShareOverdue',
+	'SplitBillSettled',
 ]);
 
 function shortId(id: string | null | undefined): string {
@@ -28,7 +32,6 @@ function money(amount: number | null, currency: string | null): string {
 
 /**
  * Human copy for in-app notifications (not saga step labels).
- * Example: «Вам переказали гроші з рахунку … (USD) на ваш гаманець (EUR)»
  */
 export function formatNotificationText(
 	e: LiveTransferEvent,
@@ -38,6 +41,35 @@ export function formatNotificationText(
 		!!meUserId && !!e.recipientOwnerId && e.recipientOwnerId === meUserId;
 	const isSender =
 		!!meUserId && !!e.initiatorId && e.initiatorId === meUserId;
+
+	if (e.type === 'SplitBillCreated') {
+		return {
+			title: 'Новий спільний рахунок',
+			body: `Вас додали до рахунку на ${money(e.amount, e.currency)}`,
+			kind: 'info',
+		};
+	}
+	if (e.type === 'SplitShareOverdue') {
+		return {
+			title: 'Частка прострочена',
+			body: `Не оплачено ${money(e.amount, e.currency)} за спільним рахунком`,
+			kind: 'fail',
+		};
+	}
+	if (e.type === 'SplitSharePaid') {
+		return {
+			title: 'Частку оплачено',
+			body: `Сплачено ${money(e.amount, e.currency)} за спільним рахунком`,
+			kind: 'ok',
+		};
+	}
+	if (e.type === 'SplitBillSettled') {
+		return {
+			title: 'Рахунок закрито',
+			body: 'Усі частки спільного рахунку оплачено',
+			kind: 'ok',
+		};
+	}
 
 	if (e.type === 'TransferFailed') {
 		return {

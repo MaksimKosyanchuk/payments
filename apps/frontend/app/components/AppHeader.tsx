@@ -57,7 +57,10 @@ export function AppHeader() {
 			}}
 		>
 			<nav style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-				<a href="/wallets" style={{ fontWeight: 600, textDecoration: 'none', color: '#111' }}>
+				<a
+					href="/wallets"
+					style={{ fontWeight: 600, textDecoration: 'none', color: '#111' }}
+				>
 					P2P Ledger
 				</a>
 				<a href="/wallets" style={{ color: '#444', textDecoration: 'none' }}>
@@ -66,6 +69,14 @@ export function AppHeader() {
 				<a href="/transfer" style={{ color: '#444', textDecoration: 'none' }}>
 					Переказ
 				</a>
+				<a href="/splits" style={{ color: '#444', textDecoration: 'none' }}>
+					Спільні
+				</a>
+				{me.role === 'admin' && (
+					<a href="/admin" style={{ color: '#444', textDecoration: 'none' }}>
+						Admin
+					</a>
+				)}
 			</nav>
 			<div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
 				<span style={{ fontSize: 12, color: connected ? '#2a7' : '#999' }}>
@@ -123,7 +134,9 @@ export function AppHeader() {
 					}}
 				>
 					{all.length === 0 ? (
-						<p style={{ color: '#888', fontSize: 13, margin: 8 }}>Поки немає сповіщень</p>
+						<p style={{ color: '#888', fontSize: 13, margin: 8 }}>
+							Поки немає сповіщень
+						</p>
 					) : (
 						<ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
 							{all.slice(0, 20).map((e) => {
@@ -146,7 +159,9 @@ export function AppHeader() {
 										}}
 									>
 										<div style={{ fontWeight: 600 }}>{copy.title}</div>
-										<div style={{ color: '#555', marginTop: 4 }}>{copy.body}</div>
+										<div style={{ color: '#555', marginTop: 4 }}>
+											{copy.body}
+										</div>
 									</li>
 								);
 							})}

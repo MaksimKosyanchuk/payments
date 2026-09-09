@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { WalletsService } from '../src/wallets/wallets.service';
 import { Wallet } from '../src/wallets/entities/wallet.entity';
@@ -111,6 +112,7 @@ describe('WalletsService (events-only balance)', () => {
 	});
 
 	it('withdraw rejects when available is insufficient', async () => {
+		const { BadRequestException } = await import('@nestjs/common');
 		em.findOne.mockImplementation(async (cls: unknown) => {
 			if (cls === Wallet) return { id: 'wallet-1', currency: 'USD' };
 			return null;
@@ -128,6 +130,8 @@ describe('WalletsService (events-only balance)', () => {
 			},
 		]);
 
-		await expect(service.withdraw('wallet-1', 500)).rejects.toBeDefined();
+		await expect(service.withdraw('wallet-1', 500)).rejects.toBeInstanceOf(
+			BadRequestException,
+		);
 	});
 });

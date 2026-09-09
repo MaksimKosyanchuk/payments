@@ -25,6 +25,22 @@ export class OutboxService {
 	}
 
 	/** Persist domain event for async publish to Redis Streams. */
+	async enqueueEvent(
+		type: string,
+		payload: Record<string, unknown>,
+		correlationId?: string | null,
+	): Promise<void> {
+		await this.prisma.outboxMessage.create({
+			data: {
+				eventId: randomUUID(),
+				type,
+				correlationId: correlationId ?? null,
+				publishedAt: null,
+				payload: payload as Prisma.InputJsonValue,
+			},
+		});
+	}
+
 	async enqueueTransferEvent(
 		type: TransferOutboxEventType,
 		ctx: TransferSagaContext,
@@ -36,30 +52,26 @@ export class OutboxService {
 			failureReason?: string | null;
 		},
 	): Promise<void> {
-		await this.prisma.outboxMessage.create({
-			data: {
-				eventId: randomUUID(),
-				type,
-				correlationId: ctx.transferId,
-				publishedAt: null,
-				payload: {
-					transferId: ctx.transferId,
-					status: extra.status,
-					currentStep: extra.currentStep ?? null,
-					fromWalletId: ctx.fromWalletId,
-					toWalletId: extra.toWalletId ?? ctx.toWalletId ?? null,
-					toIdentifier: ctx.toWalletIdentifier,
-					amount: ctx.amount,
-					currency: ctx.currency,
-					amountTo: ctx.amountTo,
-					toCurrency: ctx.toCurrency,
-					fxRate: ctx.fxRate,
-					holdId: extra.holdId ?? null,
-					failureReason: extra.failureReason ?? null,
-					initiatorId: ctx.initiatorId ?? null,
-					recipientOwnerId: ctx.recipientOwnerId ?? null,
-				} as Prisma.InputJsonValue,
+		await this.enqueueEvent(
+			type,
+			{
+				transferId: ctx.transferId,
+				status: extra.status,
+				currentStep: extra.currentStep ?? null,
+				fromWalletId: ctx.fromWalletId,
+				toWalletId: extra.toWalletId ?? ctx.toWalletId ?? null,
+				toIdentifier: ctx.toWalletIdentifier,
+				amount: ctx.amount,
+				currency: ctx.currency,
+				amountTo: ctx.amountTo,
+				toCurrency: ctx.toCurrency,
+				fxRate: ctx.fxRate,
+				holdId: extra.holdId ?? null,
+				failureReason: extra.failureReason ?? null,
+				initiatorId: ctx.initiatorId ?? null,
+				recipientOwnerId: ctx.recipientOwnerId ?? null,
 			},
-		});
+			ctx.transferId,
+		);
 	}
 }

@@ -9,6 +9,7 @@ import Redis from 'ioredis';
 import { ActivityService } from '../activity/activity.service';
 import { DomainEvent } from '../events/domain-event';
 import { isTransferEvent } from '../events/transfer.events';
+import { isSplitEvent } from '../events/split.events';
 import { TransferGateway } from '../realtime/transfer.gateway';
 
 @Injectable()
@@ -147,6 +148,9 @@ export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
 			if (isTransferEvent(event.type)) {
 				await this.activity.recordTransferActivity(event);
 				this.gateway.emitTransferEvent(event);
+			} else if (isSplitEvent(event.type)) {
+				await this.activity.recordTransferActivity(event);
+				this.gateway.emitNotificationOnly(event);
 			} else {
 				this.logger.debug(`ignored event type=${event.type}`);
 			}

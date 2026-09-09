@@ -36,6 +36,14 @@ export class SagaService {
 	async executeTransfer(ctx: TransferSagaContext): Promise<void> {
 		this.assertContext(ctx);
 
+		const existing = await this.transfer.findUnique({ where: { id: ctx.transferId } });
+		if (existing && existing.status !== 'Pending') {
+			this.logger.log(
+				`Skipping duplicate saga execution transfer=${ctx.transferId} status=${existing.status}`,
+			);
+			return;
+		}
+
 		let holdId: string | null = null;
 
 		await this.emit(TRANSFER_OUTBOX_EVENT.Started, ctx, {
@@ -198,7 +206,7 @@ export class SagaService {
 		try {
 			const dest = await this.ledger.resolveDestination(
 				ctx.toWalletIdentifier,
-				ctx.currency,
+				ctx.creditCurrency ?? ctx.currency,
 			);
 			const toCurrency = dest.currency.toUpperCase();
 			const quote = this.fx.quote(ctx.currency, toCurrency);
@@ -301,7 +309,6 @@ export class SagaService {
 				);
 				return false;
 			}
-			console.log(wallet)
 			if (Number(wallet.available) < ctx.amount) {
 				this.logger.warn(
 					`Insufficient funds transfer=${ctx.transferId} available=${wallet.available} need=${ctx.amount}`,

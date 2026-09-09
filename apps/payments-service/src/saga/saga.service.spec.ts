@@ -145,10 +145,7 @@ describe('SagaService (TZ one-hold + FX)', () => {
 
 		await service.executeTransfer({ ...baseCtx });
 
-		expect(ledger.resolveDestination).toHaveBeenCalledWith(
-			baseCtx.toWalletIdentifier,
-			'USD',
-		);
+		expect(ledger.resolveDestination).toHaveBeenCalledWith(baseCtx.toWalletIdentifier, 'USD');
 		expect(ledger.placeHold).toHaveBeenCalledWith(
 			expect.objectContaining({ amount: 50, currency: 'USD' }),
 		);
@@ -280,5 +277,39 @@ describe('SagaService (TZ one-hold + FX)', () => {
 		const row = await store.findUnique({ where: { id: baseCtx.transferId } });
 		expect(row?.status).toBe('Failed');
 		expect(row?.failureReason).toBe('credit_failed_refunded');
+	});
+
+	it('does not replay saga for already completed transfer', async () => {
+		await store.update({
+			where: { id: baseCtx.transferId },
+			data: {
+				status: 'Completed',
+				currentStep: 'complete',
+				failureReason: null,
+			},
+		});
+
+		await service.executeTransfer({ ...baseCtx });
+
+		expect(ledger.getWallet).not.toHaveBeenCalled();
+		expect(ledger.placeHold).not.toHaveBeenCalled();
+		expect(ledger.credit).not.toHaveBeenCalled();
+	});
+
+	it('does not replay saga for already failed transfer', async () => {
+		await store.update({
+			where: { id: baseCtx.transferId },
+			data: {
+				status: 'Failed',
+				currentStep: 'lockFx',
+				failureReason: 'fx_rate_stale',
+			},
+		});
+
+		await service.executeTransfer({ ...baseCtx });
+
+		expect(ledger.getWallet).not.toHaveBeenCalled();
+		expect(ledger.placeHold).not.toHaveBeenCalled();
+		expect(ledger.credit).not.toHaveBeenCalled();
 	});
 });

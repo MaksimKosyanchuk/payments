@@ -77,6 +77,9 @@ export class TransfersService {
 		});
 
 		const ctx = this.toSagaContext(transfer);
+		if (dto.creditCurrency) {
+			ctx.creditCurrency = dto.creditCurrency.trim().toUpperCase();
+		}
 		// Fire-and-forget so client can subscribe to WS progress before saga finishes.
 		void this.sagaService.executeTransfer(ctx).catch(() => undefined);
 

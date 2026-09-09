@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ActivityModule } from './activity/activity.module';
 import { AuthModule } from './auth/auth.module';
 import { ConsumerModule } from './consumer/consumer.module';
@@ -10,6 +12,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 @Module({
 	imports: [
 		ConfigModule.forRoot({ isGlobal: true }),
+		ThrottlerModule.forRoot([{ ttl: 60, limit: 30 }]),
 		AuthModule,
 		PrismaModule,
 		ActivityModule,
@@ -17,5 +20,11 @@ import { RealtimeModule } from './realtime/realtime.module';
 		ConsumerModule,
 	],
 	controllers: [HealthController],
+	providers: [
+		{
+			provide: APP_GUARD,
+			useClass: ThrottlerGuard,
+		},
+	],
 })
 export class AppModule {}

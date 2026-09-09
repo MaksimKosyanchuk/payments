@@ -79,7 +79,6 @@ export class WalletsService {
 		return this.toView(wallet, await this.computeBalance(walletId));
 	}
 
-	/** User-facing: same as getById but hides existence of others' wallets. */
 	async getOwnedById(walletId: string, userId: string): Promise<WalletView> {
 		const wallet = await this.wallets.findOne({ where: { id: walletId } });
 		if (!wallet || wallet.ownerId !== userId) {
@@ -434,6 +433,46 @@ export class WalletsService {
 			where: { streamId: walletStreamId(walletId) },
 			order: { version: 'ASC' },
 		});
+	}
+
+	/** Admin: event log for any wallet (no ownership check). */
+	async listEventsAdmin(walletId: string): Promise<LedgerEvent[]> {
+		const wallet = await this.wallets.findOne({ where: { id: walletId } });
+		if (!wallet) throw new NotFoundException('Гаманець не знайдено');
+		return this.events.find({
+			where: { streamId: walletStreamId(walletId) },
+			order: { version: 'ASC' },
+		});
+	}
+
+	/** Admin: recent wallets for picker (with live balances). */
+	async listWalletsAdmin(take = 50): Promise<
+		Array<{
+			id: string;
+			ownerId: string;
+			currency: string;
+			available: string;
+			held: string;
+			createdAt: Date;
+		}>
+	> {
+		const rows = await this.wallets.find({
+			order: { createdAt: 'DESC' },
+			take: Math.min(Math.max(take, 1), 200),
+		});
+		const out = [];
+		for (const w of rows) {
+			const bal = await this.computeBalance(w.id);
+			out.push({
+				id: w.id,
+				ownerId: w.ownerId,
+				currency: w.currency,
+				available: bal.available,
+				held: bal.held,
+				createdAt: w.createdAt,
+			});
+		}
+		return out;
 	}
 
 	/**

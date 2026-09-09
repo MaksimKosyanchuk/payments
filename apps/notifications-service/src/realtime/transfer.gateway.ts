@@ -177,6 +177,44 @@ export class TransferGateway implements OnGatewayConnection, OnGatewayDisconnect
 		}
 	}
 
+	/** In-app notification only (split bill overdue / settled, etc.). */
+	emitNotificationOnly(event: DomainEvent): void {
+		const payload = event.payload as TransferEventPayload & { userIds?: string[] };
+		const message = {
+			eventId: event.eventId,
+			type: event.type,
+			transferId: (payload as { billId?: string }).billId ?? event.correlationId ?? '',
+			status: payload.status ?? null,
+			currentStep: null,
+			failureReason: null,
+			amount: typeof payload.amount === 'number' ? payload.amount : null,
+			currency: payload.currency ?? null,
+			amountTo: null,
+			toCurrency: null,
+			fromWalletId: null,
+			toWalletId: null,
+			toIdentifier: null,
+			initiatorId: payload.initiatorId ?? null,
+			recipientOwnerId: payload.recipientOwnerId ?? null,
+			occurredAt: event.occurredAt,
+			title: (payload as { title?: string }).title ?? null,
+		};
+
+		const audience = new Set<string>();
+		if (payload.initiatorId) audience.add(payload.initiatorId);
+		if (payload.userId) audience.add(payload.userId);
+		if (payload.recipientOwnerId) audience.add(payload.recipientOwnerId);
+		if (Array.isArray(payload.userIds)) {
+			for (const id of payload.userIds) {
+				if (id) audience.add(id);
+			}
+		}
+
+		for (const userId of audience) {
+			this.server.to(this.userRoom(userId)).emit('notification', message);
+		}
+	}
+
 	private extractToken(client: Socket): string | null {
 		const auth = client.handshake.auth as { token?: string } | undefined;
 		if (auth?.token) {

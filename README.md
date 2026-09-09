@@ -6,17 +6,10 @@
 
 ## Що вже працює
 
-- `apps/ledger-service` — автентифікація (register/login/refresh) і базовий
-  CRUD гаманців. Балансу гаманця бракує event sourcing — це частина завдання.
-- `apps/frontend` — сторінки логіну, реєстрації та список гаманців (Next.js
-  App Router, Server Component + API-роут-проксі для авторизації).
-
-## Що ще НЕ реалізовано
-
-- `apps/payments-service` — лише каркас контролера/DTO, бізнес-логіки саги
-  переказу немає (`NotImplementedException`).
-- `apps/notifications-service` — порожній Nest-проєкт, лише `/health`.
-- Форма переказу, split-рахунки, admin-екран на фронтенді.
+- `apps/ledger-service` — auth, event-sourced wallets, holds, reconciliation, `@ServiceAuth` для payments.
+- `apps/payments-service` — transfer saga + FX + **split bills** (спільні рахунки).
+- `apps/notifications-service` — Redis consumer, WS, activity, split overdue notifications.
+- `apps/frontend` — login, wallets, transfer live, **`/splits`** спільні рахунки.
 
 ## Запуск
 
@@ -57,3 +50,16 @@ cd apps/ledger-service && npm test
 - **Відтворення:** прибрати `throw` з withdraw при недостатньому балансі → тест у
   стартерній формі все одно pass.
 - **Фікс:** `await expect(service.withdraw(...)).rejects.toBeInstanceOf(BadRequestException)`.
+
+### 3. Race / double-spend на балансі (check-then-act)
+- **Проблема:** у стартері `deposit` / `withdraw` робили read-modify-write поля
+  `wallet.balance` без транзакції й без блокування рядка: спочатку читали баланс і
+  перевіряли достатність, потім рахували нове значення в пам’яті і `save`. Між
+  перевіркою і записом інший паралельний запит міг змінити баланс — обидва withdraw
+  бачили старий `current` і обидва проходили (overspend / «подвійна витрата»).
+- **Відтворення:** гаманець з балансом 100; два одночасні `POST .../withdraw` по 80
+  → обидва успішні; підсумковий баланс некоректний (наприклад 20 замість відмови
+  другого запиту).
+- **Фікс:** event sourcing + DB-транзакція + `pessimistic_write` на wallet row
+  (`loadWallet(..., { lock: true })`) і унікальність `(streamId, version)` на
+  подіях — перевірка available і append події в одному критичному секті.

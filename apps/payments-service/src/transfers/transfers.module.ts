@@ -8,5 +8,6 @@ import { QueueModule } from '../queue/queue.module';
 	imports: [SagaModule, QueueModule],
 	controllers: [TransfersController],
 	providers: [TransfersService],
+	exports: [TransfersService],
 })
 export class TransfersModule {}

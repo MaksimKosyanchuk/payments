@@ -96,19 +96,23 @@ model SagaStep {
 }
 
 model SplitBill {
-  id          String          @id @default(uuid()) @db.Uuid
-  initiatorId String          @db.Uuid
-  total       Decimal         @db.Decimal(18, 2)
-  currency    String          @db.VarChar(3)
-  status      SplitBillStatus @default(Pending)
-  title       String?
-  dueAt       DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id             String          @id @default(uuid()) @db.Uuid
+  initiatorId    String          @db.Uuid
+  initiatorEmail String?
+  /// Wallet that receives all share payments (must belong to initiator).
+  toWalletId     String          @db.Uuid
+  total          Decimal         @db.Decimal(18, 2)
+  currency       String          @db.VarChar(3)
+  status         SplitBillStatus @default(Pending)
+  title          String?
+  dueAt          DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   shares SplitShare[]
 
   @@index([initiatorId])
+  @@index([toWalletId])
   @@index([status, dueAt])
   @@map("split_bills")
 }
@@ -117,6 +121,7 @@ model SplitShare {
   id         String           @id @default(uuid()) @db.Uuid
   billId     String           @db.Uuid
   payerId    String           @db.Uuid
+  payerEmail String?
   amount     Decimal          @db.Decimal(18, 2)
   status     SplitShareStatus @default(Pending)
   transferId String?          @db.Uuid

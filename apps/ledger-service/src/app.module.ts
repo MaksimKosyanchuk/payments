@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { WalletsModule } from './wallets/wallets.module';
@@ -18,6 +20,7 @@ import { OutboxMessage } from './wallets/entities/outbox-message.entity';
 	imports: [
 		ConfigModule.forRoot({ isGlobal: true }),
 		ScheduleModule.forRoot(),
+		ThrottlerModule.forRoot([{ ttl: 60, limit: 30 }]),
 		TypeOrmModule.forRoot({
 			type: 'postgres',
 			host: process.env.DATABASE_HOST,
@@ -25,21 +28,19 @@ import { OutboxMessage } from './wallets/entities/outbox-message.entity';
 			username: process.env.DATABASE_USER,
 			password: process.env.DATABASE_PASSWORD,
 			database: process.env.DATABASE_NAME,
-			entities: [
-				User,
-				Wallet,
-				Hold,
-				LedgerCommand,
-				LedgerEvent,
-				JournalEntry,
-				OutboxMessage,
-			],
+			entities: [User, Wallet, Hold, LedgerCommand, LedgerEvent, JournalEntry, OutboxMessage],
 			synchronize: true, // OK для стартового репо; у бойовому коді — міграції
 		}),
 		AuthModule,
 		WalletsModule,
 		OutboxModule,
 		ReconciliationModule,
+	],
+	providers: [
+		{
+			provide: APP_GUARD,
+			useClass: ThrottlerGuard,
+		},
 	],
 })
 export class AppModule {}
