@@ -6,11 +6,11 @@ services:
             POSTGRES_PASSWORD: ledger
             POSTGRES_DB: ledger
         ports:
-            - "5433:5432"
+            - '5433:5432'
         volumes:
             - ledger-db-data:/var/lib/postgresql/data
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U ledger -d ledger"]
+            test: ['CMD-SHELL', 'pg_isready -U ledger -d ledger']
             interval: 5s
             timeout: 5s
             retries: 10
@@ -22,11 +22,11 @@ services:
             POSTGRES_PASSWORD: payments
             POSTGRES_DB: payments
         ports:
-            - "5434:5432"
+            - '5434:5432'
         volumes:
             - payments-db-data:/var/lib/postgresql/data
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U payments -d payments"]
+            test: ['CMD-SHELL', 'pg_isready -U payments -d payments']
             interval: 5s
             timeout: 5s
             retries: 10
@@ -38,11 +38,11 @@ services:
             POSTGRES_PASSWORD: notifications
             POSTGRES_DB: notifications
         ports:
-            - "5435:5432"
+            - '5435:5432'
         volumes:
             - notifications-db-data:/var/lib/postgresql/data
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U notifications -d notifications"]
+            test: ['CMD-SHELL', 'pg_isready -U notifications -d notifications']
             interval: 5s
             timeout: 5s
             retries: 10
@@ -50,11 +50,11 @@ services:
     redis:
         image: redis:7-alpine
         ports:
-            - "6379:6379"
+            - '6379:6379'
         volumes:
             - redis-data:/data
         healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
+            test: ['CMD', 'redis-cli', 'ping']
             interval: 5s
             timeout: 3s
             retries: 10
@@ -73,13 +73,13 @@ services:
             redis:
                 condition: service_healthy
         ports:
-            - "3001:3001"
+            - '3001:3001'
         healthcheck:
             test:
                 [
-                    "CMD",
-                    "node",
-                    "-e",
+                    'CMD',
+                    'node',
+                    '-e',
                     "fetch('http://127.0.0.1:3001/metrics').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
                 ]
             interval: 5s
@@ -103,13 +103,13 @@ services:
             redis:
                 condition: service_healthy
         ports:
-            - "3002:3002"
+            - '3002:3002'
         healthcheck:
             test:
                 [
-                    "CMD",
-                    "node",
-                    "-e",
+                    'CMD',
+                    'node',
+                    '-e',
                     "fetch('http://127.0.0.1:3002/metrics').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
                 ]
             interval: 5s
@@ -129,13 +129,13 @@ services:
             redis:
                 condition: service_healthy
         ports:
-            - "3003:3003"
+            - '3003:3003'
         healthcheck:
             test:
                 [
-                    "CMD",
-                    "node",
-                    "-e",
+                    'CMD',
+                    'node',
+                    '-e',
                     "fetch('http://127.0.0.1:3003/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
                 ]
             interval: 5s
@@ -159,13 +159,13 @@ services:
             notifications-service:
                 condition: service_healthy
         ports:
-            - "3000:3000"
+            - '3000:3000'
         healthcheck:
             test:
                 [
-                    "CMD",
-                    "node",
-                    "-e",
+                    'CMD',
+                    'node',
+                    '-e',
                     "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
                 ]
             interval: 5s
