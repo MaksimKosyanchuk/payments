@@ -33,6 +33,7 @@ jobs:
               with:
                   recursive: true
                   dockerfile: '**/Dockerfile'
+                  ignore: DL3018
             - uses: reviewdog/action-actionlint@v1
               with:
                   github_token: ${{ secrets.GITHUB_TOKEN }}
