@@ -32,12 +32,28 @@ export type LiveTransferEvent = {
 	occurredAt: string | null;
 };
 
+export type LiveSplitEvent = {
+	eventId: string;
+	type: string;
+	billId: string;
+	shareId: string | null;
+	transferId: string | null;
+	status: string | null;
+	amount: number | null;
+	total: number | null;
+	currency: string | null;
+	title: string | null;
+	dueAt: string | null;
+	occurredAt: string | null;
+};
+
 type LiveCtx = {
 	/** All saga/progress events (for transfer operation UI). */
 	events: LiveTransferEvent[];
 	/** User-facing notifications only (Completed / Failed). */
 	notifications: LiveTransferEvent[];
 	toasts: LiveTransferEvent[];
+	splitEvents: LiveSplitEvent[];
 	lastHistoryAt: number;
 	connected: boolean;
 	meUserId: string | null;
@@ -50,6 +66,7 @@ const Ctx = createContext<LiveCtx>({
 	events: [],
 	notifications: [],
 	toasts: [],
+	splitEvents: [],
 	lastHistoryAt: 0,
 	connected: false,
 	meUserId: null,
@@ -137,6 +154,7 @@ export function LiveTransfersProvider({ children }: { children: ReactNode }) {
 	const pathname = usePathname();
 	const [events, setEvents] = useState<LiveTransferEvent[]>([]);
 	const [notifications, setNotifications] = useState<LiveTransferEvent[]>([]);
+	const [splitEvents, setSplitEvents] = useState<LiveSplitEvent[]>([]);
 	const [toasts, setToasts] = useState<LiveTransferEvent[]>([]);
 	const [lastHistoryAt, setLastHistoryAt] = useState(0);
 	const [connected, setConnected] = useState(false);
@@ -211,18 +229,39 @@ export function LiveTransfersProvider({ children }: { children: ReactNode }) {
 			socket.off('transfer.progress');
 			socket.off('transfer.history');
 			socket.off('notification');
+			socket.off('split.progress');
+
 			socket.on('transfer.progress', (msg: LiveTransferEvent) => {
-				// Progress for operation UI; toast only if notify-type.
-				pushEvent(msg, { toast: NOTIFY_EVENT_TYPES.has(msg.type) });
+				pushEvent(msg, {
+					toast: NOTIFY_EVENT_TYPES.has(msg.type),
+				});
 			});
+
 			socket.on('notification', (msg: LiveTransferEvent) => {
-				pushEvent(msg, { toast: NOTIFY_EVENT_TYPES.has(msg.type) });
+				pushEvent(msg, {
+					toast: NOTIFY_EVENT_TYPES.has(msg.type),
+				});
 			});
+
 			socket.on('transfer.history', (msg: LiveTransferEvent) => {
 				if (msg) {
 					pushEvent(msg, { toast: false });
 				}
 				setLastHistoryAt(Date.now());
+			});
+
+			socket.on('split.progress', (msg: LiveSplitEvent) => {
+				if (!msg?.eventId || !msg.billId) {
+					return;
+				}
+
+				setSplitEvents((prev) => {
+					if (prev.some((event) => event.eventId === msg.eventId)) {
+						return prev;
+					}
+
+					return [msg, ...prev].slice(0, 100);
+				});
 			});
 		},
 		[pushEvent],
@@ -305,6 +344,7 @@ export function LiveTransfersProvider({ children }: { children: ReactNode }) {
 			dismissToast,
 			refreshActivity,
 			subscribeTransfer,
+			splitEvents,
 		}),
 		[
 			events,
@@ -316,6 +356,7 @@ export function LiveTransfersProvider({ children }: { children: ReactNode }) {
 			dismissToast,
 			refreshActivity,
 			subscribeTransfer,
+			splitEvents,
 		],
 	);
 

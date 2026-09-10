@@ -1,6 +1,7 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLiveTransfers } from '../components/LiveTransfersProvider';
 
 type Wallet = { id: string; currency: string; available?: string; balance?: string };
 
@@ -48,6 +49,9 @@ export default function SplitsPage() {
 	const [payTarget, setPayTarget] = useState<PayTarget | null>(null);
 	const [payWalletId, setPayWalletId] = useState('');
 
+	const { splitEvents } = useLiveTransfers();
+	const processedSplitEvents = useRef(new Set<string>());
+
 	const reload = useCallback(async () => {
 		const [meRes, billsRes, walletsRes] = await Promise.all([
 			fetch('/api/me'),
@@ -68,9 +72,69 @@ export default function SplitsPage() {
 	}, []);
 
 	useEffect(() => {
+		for (const event of splitEvents) {
+			if (processedSplitEvents.current.has(event.eventId)) {
+				continue;
+			}
+
+			processedSplitEvents.current.add(event.eventId);
+
+			if (event.type === 'SplitBillCreated') {
+				void fetch(`/api/splits/${event.billId}`)
+					.then(async (res) => {
+						if (!res.ok) return;
+						const bill = (await res.json()) as Bill;
+
+						setBills((prev) => {
+							if (prev.some((item) => item.id === bill.id)) {
+								return prev;
+							}
+
+							return [bill, ...prev];
+						});
+					})
+					.catch(() => undefined);
+
+				continue;
+			}
+
+			setBills((prev) =>
+				prev.map((bill) => {
+					if (bill.id !== event.billId) {
+						return bill;
+					}
+
+					const shares = event.shareId
+						? bill.shares.map((share) =>
+								share.id === event.shareId
+									? {
+											...share,
+											status:
+												event.type === 'SplitSharePaid'
+													? 'Paid'
+													: event.type === 'SplitShareOverdue'
+														? 'Overdue'
+														: share.status,
+										}
+									: share,
+							)
+						: bill.shares;
+
+					return {
+						...bill,
+						shares,
+						status:
+							event.type === 'SplitBillSettled'
+								? 'Settled'
+								: bill.status,
+					};
+				}),
+			);
+		}
+	}, [splitEvents]);
+
+	useEffect(() => {
 		void reload();
-		const t = window.setInterval(() => void reload(), 4000);
-		return () => window.clearInterval(t);
 	}, [reload]);
 
 	useEffect(() => {
@@ -97,35 +161,57 @@ export default function SplitsPage() {
 		setError(null);
 		setInfo(null);
 		setBusy(true);
+
 		try {
-			if (!toWalletId) throw new Error('Оберіть гаманець для зарахування');
+			if (!toWalletId) {
+				throw new Error('Оберіть гаманець для зарахування');
+			}
+
 			const participants = emails
 				.split(/[,;\n]+/)
 				.map((s) => s.trim())
 				.filter(Boolean)
 				.map((email) => ({ email }));
+
 			if (participants.length === 0) {
 				throw new Error('Додайте хоча б одного учасника (email)');
 			}
-			const res = await fetch('/api/splits', {
+
+			const idempotencyKey = crypto.randomUUID();
+
+			const res = await fetch('http://localhost:3002/splits', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					'idempotency-Key': idempotencyKey,
+				},
 				body: JSON.stringify({
 					title: title || undefined,
 					total: Number(total),
+					initiatorId: me?.userId,
+					initiatorEmail: me?.email,
 					toWalletId,
 					dueAt: dueAt || undefined,
 					participants,
 				}),
 			});
+
 			const data = await res.json();
-			if (!res.ok) throw new Error(data.error ?? 'Не вдалося створити');
+
+			if (!res.ok) {
+				throw new Error(data.error ?? 'Не вдалося створити');
+			}
+
+			setBills((prev) => [data, ...prev]);
+
 			setTitle('');
 			setEmails('');
+
 			setInfo(
-				`Рахунок створено: учасники скинуть на ${receiveWallet?.currency ?? ''} ${toWalletId.slice(0, 8)}…`,
+				`Рахунок створено: учасники скинуть на ${
+					receiveWallet?.currency ?? ''
+				} ${toWalletId.slice(0, 8)}…`,
 			);
-			await reload();
 		} catch (err) {
 			setError((err as Error).message);
 		} finally {
@@ -150,7 +236,7 @@ export default function SplitsPage() {
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? 'Не вдалося оплатити');
 			setPayTarget(null);
-			await reload();
+
 			const fxNote =
 				data.debitCurrency &&
 				data.creditCurrency &&

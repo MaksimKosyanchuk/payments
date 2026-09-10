@@ -10,11 +10,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtAccessService } from '../auth/jwt-access.service';
-import {
-	DomainEvent,
-	HISTORY_TRANSFER_TYPES,
-	TransferEventPayload,
-} from '../events/domain-event';
+import { DomainEvent, HISTORY_TRANSFER_TYPES, TransferEventPayload } from '../events/domain-event';
 import { TransferPartiesService } from './transfer-parties.service';
 
 type AuthedSocket = Socket & {
@@ -212,6 +208,62 @@ export class TransferGateway implements OnGatewayConnection, OnGatewayDisconnect
 
 		for (const userId of audience) {
 			this.server.to(this.userRoom(userId)).emit('notification', message);
+		}
+	}
+
+	/** Live Split Bill state update. */
+	emitSplitEvent(event: DomainEvent): void {
+		const payload = event.payload as {
+			billId?: string;
+			shareId?: string;
+			transferId?: string;
+			userIds?: string[];
+			status?: string;
+			amount?: number;
+			total?: number;
+			currency?: string;
+			title?: string | null;
+			dueAt?: string | null;
+		};
+
+		if (!payload.billId) {
+			this.logger.warn(`split event ${event.type} has no billId`);
+			return;
+		}
+
+		const message = {
+			eventId: event.eventId,
+			type: event.type,
+
+			billId: payload.billId,
+			shareId: payload.shareId ?? null,
+			transferId: payload.transferId ?? null,
+
+			status: payload.status ?? null,
+			amount: payload.amount ?? null,
+			total: payload.total ?? null,
+			currency: payload.currency ?? null,
+			title: payload.title ?? null,
+			dueAt: payload.dueAt ?? null,
+
+			occurredAt: event.occurredAt,
+		};
+
+		const audience = new Set<string>();
+
+		for (const userId of payload.userIds ?? []) {
+			if (userId) {
+				audience.add(userId);
+			}
+		}
+
+		if (audience.size === 0) {
+			this.logger.warn(`split event ${event.type} bill=${payload.billId} has no userIds`);
+			return;
+		}
+
+		for (const userId of audience) {
+			this.server.to(this.userRoom(userId)).emit('split.progress', message);
 		}
 	}
 

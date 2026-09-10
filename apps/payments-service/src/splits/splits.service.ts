@@ -429,8 +429,11 @@ export class SplitsService {
 						amount: Number(share.amount),
 						currency: bill.currency,
 						dueAt: bill.dueAt?.toISOString() ?? null,
-						userId: share.payerId,
-						initiatorId: bill.initiatorId,
+						status: 'Overdue',
+						userIds: [
+							bill.initiatorId,
+							...bill.shares.map((s) => s.payerId),
+						],
 					},
 					share.id,
 				);
@@ -445,16 +448,36 @@ export class SplitsService {
 			where: { id: shareId },
 			data: { status: 'Paid' },
 		});
+
+		const bill = await this.prisma.splitBill.findUnique({
+			where: { id: billId },
+			include: {
+				shares: {
+					select: {
+						payerId: true,
+					},
+				},
+			},
+		});
+
+		if (!bill) {
+			return;
+		}
+
 		await this.reaggregateBill(billId);
+
 		await this.outbox.enqueueEvent(
 			SPLIT_OUTBOX_EVENT.SharePaid,
 			{
 				billId,
 				shareId,
+				transferId: share.transferId ?? null,
 				amount: Number(share.amount),
-				userId: share.payerId,
-				initiatorId: (await this.prisma.splitBill.findUnique({ where: { id: billId } }))
-					?.initiatorId,
+				status: 'Paid',
+				userIds: [
+					bill.initiatorId,
+					...bill.shares.map((s) => s.payerId),
+				],
 			},
 			shareId,
 		);
@@ -485,8 +508,12 @@ export class SplitsService {
 					SPLIT_OUTBOX_EVENT.BillSettled,
 					{
 						billId,
+						status: 'Settled',
 						initiatorId: bill.initiatorId,
-						userIds: [bill.initiatorId, ...bill.shares.map((s) => s.payerId)],
+						userIds: [
+							bill.initiatorId,
+							...bill.shares.map((s) => s.payerId),
+						],
 					},
 					billId,
 				);

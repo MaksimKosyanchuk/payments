@@ -144,6 +144,9 @@ export class StreamConsumer implements OnModuleInit, OnModuleDestroy {
 				this.gateway.emitTransferEvent(event);
 			} else if (isSplitEvent(event.type)) {
 				await this.activity.recordTransferActivity(event);
+
+				this.gateway.emitSplitEvent(event);
+
 				this.gateway.emitNotificationOnly(event);
 			} else {
 				this.logger.debug(`ignored event type=${event.type}`);

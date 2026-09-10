@@ -48,6 +48,98 @@ export class TransferStore {
 		return toTransferRecord(row);
 	}
 
+	async completeWithOutbox(
+		transferId: string,
+		event: {
+			eventId: string;
+			type: string;
+			correlationId: string | null;
+			payload: Prisma.InputJsonValue;
+		},
+	): Promise<void> {
+		await this.prisma.$transaction(async (tx) => {
+			await tx.transfer.update({
+				where: { id: transferId },
+				data: {
+					status: 'Completed',
+					currentStep: 'complete',
+					failureReason: null,
+					compensationAction: null,
+					nextRetryAt: null,
+				},
+			});
+
+			await tx.sagaStep.create({
+				data: {
+					sagaId: transferId,
+					step: 'complete',
+					status: 'succeeded',
+					error: null,
+				},
+			});
+
+			await tx.outboxMessage.create({
+				data: {
+					eventId: event.eventId,
+					type: event.type,
+					correlationId: event.correlationId,
+					publishedAt: null,
+					payload: event.payload,
+				},
+			});
+		});
+	}
+
+	async failWithOutbox(
+		transferId: string,
+		input: {
+			step: string;
+			failureReason: string;
+			holdId?: string | null;
+			event: {
+				eventId: string;
+				type: string;
+				correlationId: string | null;
+				payload: Prisma.InputJsonValue;
+			};
+		},
+	): Promise<void> {
+		await this.prisma.$transaction(async (tx) => {
+			await tx.transfer.update({
+				where: { id: transferId },
+				data: {
+					status: 'Failed',
+					currentStep: input.step,
+					failureReason: input.failureReason,
+					compensationAction: null,
+					nextRetryAt: null,
+					...(input.holdId !== undefined
+						? { holdId: input.holdId }
+						: {}),
+				},
+			});
+
+			await tx.sagaStep.create({
+				data: {
+					sagaId: transferId,
+					step: input.step,
+					status: 'failed',
+					error: input.failureReason,
+				},
+			});
+
+			await tx.outboxMessage.create({
+				data: {
+					eventId: input.event.eventId,
+					type: input.event.type,
+					correlationId: input.event.correlationId,
+					publishedAt: null,
+					payload: input.event.payload,
+				},
+			});
+		});
+	}
+
 	async update(args: {
 		where: { id: string };
 		data: Partial<TransferRecord>;

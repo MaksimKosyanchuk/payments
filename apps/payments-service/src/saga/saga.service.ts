@@ -12,16 +12,11 @@ import {
 	TransferStatus,
 } from '../transfers/transfer.types';
 import { MetricsService } from '../observability/metrics';
+import { randomUUID } from 'node:crypto';
 
 const COMPENSATION_BACKOFF_MS = 5_000;
 const COMPENSATION_MAX_ATTEMPTS = 20;
 
-/**
- * TZ transfer saga (one hold on sender):
- *   lockFx → assertSenderCanPay → placeHold(amountFrom) → capture → credit(amountTo) → Completed
- *
- * Cross-currency: hold/capture/refund in from currency; credit in toCurrency at locked fxRate.
- */
 @Injectable()
 export class SagaService {
 	private readonly logger = new Logger(SagaService.name);
@@ -128,6 +123,7 @@ export class SagaService {
 				return;
 			}
 			if (outcome === 'already_captured') {
+				
 				await this.setStatus(ctx.transferId, 'Held', {
 					currentStep: 'captureHold',
 					holdId: row.holdId,
@@ -453,15 +449,11 @@ export class SagaService {
 
 	private async complete(ctx: TransferSagaContext): Promise<void> {
 		this.observeDuration(ctx.transferId, 'completed');
-		await this.setStatus(ctx.transferId, 'Completed', {
-			currentStep: 'complete',
-			failureReason: null,
-			compensationAction: null,
-			nextRetryAt: null,
-		});
-		await this.emit(TRANSFER_OUTBOX_EVENT.Completed, ctx, {
-			status: 'Completed',
-			currentStep: 'complete',
+		await this.transfer.completeWithOutbox(ctx.transferId, {
+			eventId: randomUUID(),
+			type: TRANSFER_OUTBOX_EVENT.Completed,
+			correlationId: null,
+			payload: {},
 		});
 	}
 
@@ -473,18 +465,22 @@ export class SagaService {
 		holdId?: string | null,
 	): Promise<void> {
 		this.observeDuration(ctx.transferId, 'failed');
-		await this.setStatus(ctx.transferId, 'Failed', {
-			currentStep: step,
+
+		await this.transfer.failWithOutbox(ctx.transferId, {
+			step,
 			failureReason,
-			compensationAction: null,
-			nextRetryAt: null,
-			...(holdId !== undefined ? { holdId } : {}),
-		});
-		await this.emit(TRANSFER_OUTBOX_EVENT.Failed, ctx, {
-			status: 'Failed',
-			currentStep: step,
-			holdId: holdId ?? null,
-			failureReason,
+			holdId,
+			event: {
+				eventId: randomUUID(),
+				type: TRANSFER_OUTBOX_EVENT.Failed,
+				correlationId: null,
+				payload: {
+					status: 'Failed',
+					currentStep: step,
+					holdId: holdId ?? null,
+					failureReason,
+				},
+			},
 		});
 	}
 
