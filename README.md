@@ -1,11 +1,8 @@
-# P2P Ledger
+# **P2P Ledger**
 
-Distributed Ledger & P2P Payments Platform на NestJS, PostgreSQL, Redis Streams
-и Next.js. Проект реализует event-sourced ledger, double-entry journal,
-оркестрированную saga переказу, FX, split bills, real-time notifications и
-admin/reconciliation tooling.
+Distributed Ledger & P2P Payments Platform built on NestJS, PostgreSQL, Redis Streams, and Next.js. The project implements an event-sourced ledger, a double-entry journal, an orchestrated transfer saga, FX, split bills, real-time notifications, and admin/reconciliation tooling.
 
-## Архитектура
+## **Architecture**
 
 ```mermaid
 flowchart LR
@@ -21,253 +18,183 @@ flowchart LR
     N --> ND[(notifications PostgreSQL)]
 ```
 
-### Сервисы
+### **Services**
 
-| Сервис                  | Ответственность                                                    | Хранилище            |
-| ----------------------- | ------------------------------------------------------------------ | -------------------- |
-| `ledger-service`        | Auth, wallets, events, projections, holds, journal, reconciliation | TypeORM + PostgreSQL |
-| `payments-service`      | Transfer saga, FX, compensation, retries, split bills, outbox      | Prisma + PostgreSQL  |
-| `notifications-service` | Redis consumer, event deduplication, activity feed, WebSocket      | Prisma + PostgreSQL  |
-| `frontend`              | Next.js UI, BFF API routes, auth cookies, live transfer UI, admin  | без собственной БД   |
+| Service | Responsibility | Storage |
+| :---- | :---- | :---- |
+| ledger-service | Auth, wallets, events, projections, holds, journal, reconciliation | TypeORM \+ PostgreSQL |
+| payments-service | Transfer saga, FX, compensation, retries, split bills, outbox | Prisma \+ PostgreSQL |
+| notifications-service | Redis consumer, event deduplication, activity feed, WebSocket | Prisma \+ PostgreSQL |
+| frontend | Next.js UI, BFF API routes, auth cookies, live transfer UI, admin | No dedicated DB |
 
-Между сервисами нет общего чтения БД и нет XA-транзакций. Внутри сервиса
-используется обычная транзакция собственной БД, а межсервисная согласованность
-достигается через HTTP-команды, outbox и Redis Streams.
+There is no shared database reading and no XA transactions between services. Inside each service, standard local database transactions are used, while cross-service consistency is achieved via HTTP commands, outboxes, and Redis Streams.
 
-## Денежная модель
+## **Monetary Model**
 
-`ledger-service` является источником истины. Баланс не хранится как изменяемое
-CRUD-поле: он восстанавливается fold-операцией из append-only `ledger_events`.
-Для конкурентных команд wallet row блокируется `pessimistic_write`, а версия
-потока защищена уникальностью `(streamId, version)`.
+The ledger-service serves as the single source of truth. The balance is not stored as a mutable CRUD field; instead, it is reconstructed via a fold operation over append-only ledger\_events. For concurrent commands, the wallet row is locked using pessimistic\_write, and the stream version is protected by a unique constraint on (streamId, version).  
+Every financial operation writes journal lines with two sides, satisfying the invariant:
 
-Каждая денежная операция пишет journal lines с двумя сторонами. Инвариант:
+Plaintext  
+sum(debit) \== sum(credit)
 
-```text
-sum(debit) == sum(credit)
-```
+The ReconciliationService verifies journal totals and rebuilds the balance from the event stream. Admin endpoints include:
 
-`ReconciliationService` проверяет journal totals и повторно строит баланс из
-event stream. Admin endpoints:
+* GET /admin/reconciliation  
+* GET /admin/wallets/:id/reconciliation  
+* GET /admin/wallets/:id/events
 
-- `GET /admin/reconciliation`;
-- `GET /admin/wallets/:id/reconciliation`;
-- `GET /admin/wallets/:id/events`.
+Operations supported include placeHold, captureHold, releaseHold, credit, and compensation debit/credit. Ledger commands are idempotent based on commandId.
 
-Поддерживаются `placeHold`, `captureHold`, `releaseHold`, credit и
-compensation debit/credit. Команды ledger идемпотентны по `commandId`.
+## **Transfer Saga**
 
-## Transfer saga
+An orchestrated saga pattern is used, with payments-service acting as the coordinator. Its state, steps, and retry metadata are stored in the payments database.
 
-Использована оркестрированная saga: координатором является `payments-service`.
-Её состояние, шаги и retry metadata хранятся в `payments` DB.
+Plaintext  
+lockFx  
+  \-\> assertSenderCanPay  
+  \-\> placeHold  
+  \-\> captureHold  
+  \-\> creditRecipient  
+  \-\> complete
 
-```text
-lockFx
-  -> assertSenderCanPay
-  -> placeHold
-  -> captureHold
-  -> creditRecipient
-  -> complete
-```
+Compensations:
 
-Компенсации:
+| Error | Compensation |
+| :---- | :---- |
+| FX stale / recipient not found / insufficient funds | Failed, funds were not reserved |
+| placeHold failed | Failed, no hold placed |
+| captureHold failed | Reconcile hold, then releaseHold or proceed if capture already passed |
+| Credit after capture failed | refundSender via an idempotent ledger credit |
+| Ledger/network unavailable | Circuit breaker, Compensating, retry with backoff and attempt limits |
 
-| Ошибка                                              | Компенсация                                                                  |
-| --------------------------------------------------- | ---------------------------------------------------------------------------- |
-| FX stale / recipient not found / insufficient funds | `Failed`, деньги не резервировались                                          |
-| `placeHold` failed                                  | `Failed`, hold отсутствует                                                   |
-| `captureHold` failed                                | reconcile hold, затем `releaseHold` или продолжение, если capture уже прошёл |
-| credit после capture failed                         | `refundSender` через idempotent ledger credit                                |
-| ledger/network недоступен                           | circuit breaker, `Compensating`, retry с backoff и лимитом попыток           |
+Every saga transition is recorded in saga\_steps; the admin trace viewer displays status, duration, and an ordered step timeline.
 
-Каждый переход saga записывается в `saga_steps`; admin trace viewer показывает
-status, duration и ordered step timeline.
+## **FX & Split Bills**
 
-## FX и split bills
+FX rates are cached with a TTL, updated by a worker, and locked for the duration of a saga. Supported currencies include USD, EUR, and UAH.  
+A split bill contains participants, shares, a due date, and an aggregated status of Pending \-\> PartiallyPaid \-\> Settled. Bill creation and share payments utilize an Idempotency-Key, with the creation key stored in the unique split\_bills.idempotencyKey field.
 
-FX rates кэшируются с TTL, обновляются worker-ом и фиксируются на время saga.
-Поддерживаются USD, EUR и UAH.
+## **Events, Outbox & Real-Time**
 
-Split bill содержит участников, доли, due date и агрегированный статус
-`Pending -> PartiallyPaid -> Settled`. Создание bill и оплата share используют
-`Idempotency-Key`; ключ создания хранится в уникальном поле
-`split_bills.idempotencyKey`.
+The event envelope contains:
 
-## Events, outbox и real-time
-
-Event envelope содержит:
-
-```json
-{
-	"eventId": "uuid",
-	"type": "TransferCompleted",
-	"occurredAt": "ISO-8601",
-	"schemaVersion": "1",
-	"correlationId": "transfer-id",
-	"traceparent": "00-...",
-	"payload": {}
+JSON  
+{  
+  "eventId": "uuid",  
+  "type": "TransferCompleted",  
+  "occurredAt": "ISO-8601",  
+  "schemaVersion": "1",  
+  "correlationId": "transfer-id",  
+  "traceparent": "00-...",  
+  "payload": {}  
 }
-```
 
-Ledger и payments сначала сохраняют событие в собственной БД/outbox, затем
-публикуют его в Redis Streams. Notifications consumer дедуплицирует события по
-`eventId` через `processed_events`.
+Ledger and payments first save the event to their local database/outbox and then publish it to Redis Streams. The notifications consumer deduplicates events by eventId using processed\_events.  
+The frontend receives transfer progress and notifications via Socket.IO. Upon reconnecting, an activity snapshot is loaded via /api/activity, ensuring the UI does not depend on the delivery of every missed WebSocket message.
 
-Frontend получает transfer progress и notifications через Socket.IO. После
-reconnect activity snapshot загружается через `/api/activity`, поэтому UI не
-зависит от доставки каждого пропущенного WebSocket-сообщения.
+## **API & Security**
 
-## API и безопасность
+Next.js API routes act as a BFF: they verify JWT cookies and proxy requests to the backend. A GraphQL gateway was omitted because, for this scope, a thin BFF maintains clear HTTP contracts without introducing an additional deployment unit.
 
-Next.js API routes используются как BFF: они проверяют JWT cookie и проксируют
-запросы в backend. GraphQL gateway не добавлялся, потому что для данного
-объёма тонкий BFF сохраняет явные HTTP-контракты и не создаёт дополнительный
-deployment unit.
+* JWT access and refresh tokens are stored in httpOnly cookies on the frontend.  
+* User wallet endpoints verify ownership.  
+* The payments to ledger communication uses x-service-key.  
+* Admin endpoints are protected by the admin JWT role or a server-side admin key for the trace endpoint.  
+* DTOs pass through a ValidationPipe with whitelist and transform enabled.  
+* Login and transfer endpoints are rate-limited via a throttler.  
+* Idempotency keys and event IDs feature unique indexes.
 
-- JWT access/refresh хранится в httpOnly cookies на frontend;
-- пользовательские wallet endpoints проверяют владельца;
-- payments → ledger использует `x-service-key`;
-- admin endpoints защищены JWT role `admin` либо server-side admin key для
-  trace endpoint;
-- DTO проходят `ValidationPipe` с `whitelist` и `transform`;
-- login и transfer endpoints ограничены throttler-ом;
-- idempotency keys и event IDs имеют уникальные индексы.
+## **Observability**
 
-## Observability
+Every backend service includes:
 
-Каждый backend имеет:
+* Structured JSON HTTP logs.  
+* x-correlation-id and W3C traceparent headers.  
+* A live Prometheus /metrics endpoint.  
+* HTTP counters and histograms.  
+* Payments saga step/duration metrics.  
+* Notifications consumer metrics.  
+* An optional OTLP exporter via OTEL\_EXPORTER\_OTLP\_ENDPOINT.
 
-- structured JSON HTTP logs;
-- `x-correlation-id` и W3C `traceparent`;
-- живой Prometheus `/metrics`;
-- HTTP counters/histograms;
-- payments saga step/duration metrics;
-- notifications consumer metrics;
-- optional OTLP exporter через `OTEL_EXPORTER_OTLP_ENDPOINT`.
+Trace context flows through the frontend BFF, payments-to-ledger HTTP calls, payments outbox, Redis envelope, and the notifications consumer. If an OTLP endpoint is not provided, services continue to function using correlation logs and Prometheus metrics.  
+The admin frontend at /admin provides visibility into reconciliation, wallet drift, and recent transfer traces via /api/admin/traces.
 
-Trace context проходит через frontend BFF, payments → ledger HTTP, payments
-outbox, Redis envelope и notifications consumer. Если OTLP endpoint не задан,
-сервисы продолжают работать с correlation logs и Prometheus metrics.
+## **Discovered Bugs & Fixes (Spec §3.2)**
 
-Admin frontend `/admin` показывает reconciliation, wallet drift и последние
-transfer traces через `/api/admin/traces`.
+### **1\. IDOR — Reading Another User's Wallet**
 
-## Найдені закладні баги (ТЗ §3.2)
+* **Problem:** The initial GET /wallets/:id endpoint returned the projection of any wallet without verifying ownership.  
+* **Reproduction:** Obtain another user's wallet UUID and query the endpoint using a different user's JWT or without authorization in the starter version.  
+* **Fix:** The user API now utilizes JwtAuthGuard and getOwnedById; unauthorized wallet requests return a 404\. For payments, a separate InternalWalletsController (GET /internal/wallets/:id) was added, protected by @ServiceAuth() and x-service-key.  
+* **Proof:** The integration test suite verifies that a second user receives a 404 when attempting to read the first user's wallet.
 
-### 1. IDOR — читання чужого гаманця
+### **2\. False-Positive Withdraw Test**
 
-- **Проблема:** стартовый `GET /wallets/:id` отдавал проекцию любого wallet без
-  проверки владельца.
-- **Воспроизведение:** получить UUID чужого wallet и запросить endpoint с чужим
-  JWT или без авторизации в стартовой версии.
-- **Исправление:** пользовательский API использует `JwtAuthGuard` и
-  `getOwnedById`; чужой wallet возвращает `404`. Для payments добавлен отдельный
-  `GET /internal/wallets/:id` под `@ServiceAuth()` и `x-service-key`.
-- **Доказательство:** integration suite проверяет, что второй пользователь
-  получает `404` при чтении wallet первого.
+* **Problem:** The original test called service.withdraw(...).catch(...) without using await, allowing Jest to finish the test before checking for rejection.  
+* **Fix:** Updated the test to use await expect(...).rejects.toBeInstanceOf(BadRequestException).  
+* **Proof:** Included in the ledger unit test suite.
 
-### 2. Хибно-зелений тест withdraw
+### **3\. Race Condition / Double-Spend**
 
-- **Проблема:** исходный тест вызывал `service.withdraw(...).catch(...)` без
-  `await`, поэтому Jest мог завершить тест до проверки rejection.
-- **Исправление:** тест использует
-  `await expect(...).rejects.toBeInstanceOf(BadRequestException)`.
-- **Доказательство:** тест входит в ledger unit suite.
+* **Problem:** The initial read-modify-write pattern allowed two concurrent withdrawals to read the same old balance and pass validation simultaneously.  
+* **Fix:** Implemented event sourcing, a database transaction, pessimistic\_write wallet locking, a non-negative projection guard, and a unique stream version constraint.  
+* **Proof:** The integration test suite dispatches two concurrent transfers exceeding the available balance; exactly one completes as Completed, the second fails as Failed, and the balance remains non-negative.
 
-### 3. Race / double-spend
+## **Testing**
 
-- **Проблема:** стартовый read-modify-write позволял двум одновременным
-  withdrawals увидеть один старый balance и оба пройти проверку.
-- **Исправление:** event sourcing, DB transaction, `pessimistic_write` wallet
-  lock, non-negative projection guard и уникальная stream version.
-- **Доказательство:** integration suite отправляет два concurrent transfer на
-  сумму, превышающую остаток; ровно один завершается `Completed`, второй
-  `Failed`, а баланс остаётся неотрицательным.
+### **Unit Tests**
 
-## Тестирование
+Bash  
+cd apps/ledger-service && npm test \-- \--runInBand  
+cd apps/payments-service && npm test \-- \--runInBand  
+cd apps/notifications-service && npm test \-- \--runInBand
 
-### Unit
+Coverage includes projection folding, authentication, service guards, double-entry journaling, reconciliation, saga happy/failure/compensation paths, FX, circuit breakers, outboxes, queues, event parsing, and notifications ACL/deduplication helpers.
 
-```bash
-cd apps/ledger-service && npm test -- --runInBand
-cd apps/payments-service && npm test -- --runInBand
-cd apps/notifications-service && npm test -- --runInBand
-```
+### **Integration / Acceptance Tests**
 
-Покрыты projection fold, auth, service guard, double-entry journal,
-reconciliation, saga happy/failure/compensation paths, FX, circuit breaker,
-outbox, queue, event parsing и notifications ACL/dedup helpers.
+After starting the Docker stack:
 
-### Integration / acceptance
-
-После старта Docker stack:
-
-```bash
-docker compose up -d --build
-npm run test:integration
+Bash  
+docker compose up \-d \--build  
+npm run test:integration  
 bash scripts/integration-smoke.sh
-```
 
-`scripts/integration-tests.mjs` проверяет auth, IDOR, same/cross-currency
-transfer, event log, duplicate idempotency key, concurrent double-spend,
-reconciliation, admin access и duplicate Redis event delivery.
+scripts/integration-tests.mjs verifies authentication, IDOR prevention, same/cross-currency transfers, event logs, duplicate idempotency keys, concurrent double-spends, reconciliation, admin access, and duplicate Redis event delivery.
 
-## Запуск
+## **Running the Project**
 
-Требуется Docker Desktop с Compose v2:
+Docker Desktop with Compose v2 is required:
 
-```bash
-docker compose up --build
-```
+Bash  
+docker compose up \--build
 
-Compose поднимает три PostgreSQL, Redis, три backend-сервиса и frontend.
-Prisma migrations применяются при старте payments/notifications containers.
-Healthchecks не дают frontend и payments стартовать до готовности зависимостей.
-
+Compose boots up three PostgreSQL instances, Redis, three backend services, and the frontend. Prisma migrations are automatically applied upon startup of the payments and notifications containers. Healthchecks prevent the frontend and payments services from starting until their dependencies are ready.  
 URLs:
 
-| Компонент                   | URL                          |
-| --------------------------- | ---------------------------- |
-| Frontend                    | http://localhost:3000        |
-| Ledger API / Swagger        | http://localhost:3001 /docs  |
-| Payments API / Swagger      | http://localhost:3002 /docs  |
-| Notifications API / Swagger | http://localhost:3003 /docs  |
-| Metrics                     | `/metrics` на каждом backend |
+| Component | URL |
+| :---- | :---- |
+| Frontend | http://localhost:3000 |
+| Ledger API / Swagger | http://localhost:3001 /docs |
+| Payments API / Swagger | http://localhost:3002 /docs |
+| Notifications API / Swagger | http://localhost:3003 /docs |
+| Metrics | /metrics on each backend |
 
-Для локального запуска без Docker скопируйте `.env.example` в `.env` каждого
-сервиса. Внутри Compose ledger использует `ledger-db:5432`; локальный host
-порт для ledger — `5433`.
+To run locally without Docker, copy .env.example to .env in each service directory. Within Docker Compose, the ledger uses ledger-db:5432; the local host port for the ledger is 5433\.
 
-## CI и Docker
+## **CI and Docker**
 
-GitHub Actions workflow `.github/workflows/ci.yml` содержит отдельные jobs для
-frontend, payments, ledger, notifications, Docker image build, integration
-stack и quality checks. Quality job проверяет TypeScript lint, формат файлов
-CI/compose/integration, Compose schema, Dockerfile через Hadolint и workflow
-через Actionlint.
+The GitHub Actions workflow at .github/workflows/ci.yml contains separate jobs for the frontend, payments, ledger, notifications, Docker image builds, integration stack, and quality checks. The quality job verifies TypeScript linting, formatting of CI/compose/integration files, compose schema validity, Dockerfiles via Hadolint, and workflows via Actionlint.  
+Each application image includes a .dockerignore; Prisma images install OpenSSL, run prisma generate, and apply migrations before boot.
 
-Каждый application image имеет `.dockerignore`; Prisma images устанавливают
-OpenSSL, выполняют `prisma generate`, а migrations применяются перед boot.
+## **Limitations & Future Improvements**
 
-## Что осталось / ограничения
+* A full OTLP trace collector is not included in the compose setup: the exporter connects if OTEL\_EXPORTER\_OTLP\_ENDPOINT is specified, while correlation logs and metrics remain available locally.  
+* The integration race-condition test runs against a local Docker stack and is not structured as a separate, long-running load-test environment.  
+* The TypeORM ledger utilizes synchronize: true for educational purposes; production environments should transition to versioned TypeORM migrations.  
+* The FX provider acts as a mock/cached provider, as permitted by the specification.  
+* The frontend uses inline styles and does not claim to implement a full production design system.
 
-- Полный OTLP trace collector не включён в compose: exporter подключается при
-  заданном `OTEL_EXPORTER_OTLP_ENDPOINT`, а локально доступны correlation logs
-  и metrics.
-- Интеграционный race-тест запускается против локального Docker stack и не
-  является отдельным длительным load-test стендом.
-- TypeORM ledger использует `synchronize: true` для учебного проекта; для
-  production следует перейти на versioned TypeORM migrations.
-- FX provider является mock/cached provider, как допускает ТЗ.
-- Frontend использует inline styles и не претендует на production design system.
+## **Starter Code Modifications**
 
-## Стартовый код
-
-Сохранены auth-контракты ledger и базовая структура монорепозитория. Ledger
-wallet CRUD был заменён на event store и projections; payments scaffold получил
-saga, FX, compensation, split bills и outbox; notifications scaffold получил
-consumer, deduplication, activity и WebSocket; frontend получил transfer,
-split, activity и admin flows. Server Components используются для начальной
-загрузки страниц, а Client Components — для WebSocket/live state и интерактивных
-форм. Мутации transfer идут через API с явным `Idempotency-Key`.
+Ledger authentication contracts and the basic monorepo structure were preserved. The ledger wallet CRUD was replaced with an event store and projections; the payments skeleton was expanded with a saga, FX, compensation, split bills, and outbox; the notifications skeleton was built out with a consumer, deduplication, activity feed, and WebSockets; and the frontend received transfer, split bill, activity, and admin flows. Server components handle initial page loading, while client components handle WebSockets/live state and interactive forms. Transfer mutations are routed through the API with explicit Idempotency-Key headers.
